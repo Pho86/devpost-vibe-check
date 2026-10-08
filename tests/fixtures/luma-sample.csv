@@ -1,0 +1,5 @@
+email,approval_status,name
+alice@example.com,approved,Alice Demo
+bob@example.com,going,Bob Demo
+cara@example.com,pending,Cara Demo
+dan@example.com,approved,Dan Demo
