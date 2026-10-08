@@ -4,7 +4,6 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 from pathlib import Path
 
-
 LOW_COMMIT_THRESHOLD = 10
 EARLY_WINDOW_HOURS = 2
 
@@ -113,11 +112,15 @@ class RunConfig:
     workers: int = DEFAULT_WORKERS
     checkin_csv: Path | None = None
     checkin_column: str = "StormHacks 2026 Check In"
+    # Extra attendee sources (Luma / portal / Devpost registrants / generic).
+    accepted_csvs: tuple[Path, ...] = ()
+    luma_csv: Path | None = None
+    portal_csv: Path | None = None
+    registrants_csv: Path | None = None
     display_tz: str = DEFAULT_TZ
     gemini: bool = False
     gemini_model: str = DEFAULT_GEMINI_MODEL
     gemini_all: bool = False  # False = marked + near-misses only
-    redact_pii: bool = True  # mask emails in CSV/JSON exports
 
     # Back-compat alias used by older call sites / checkpoints.
     @property
@@ -133,6 +136,16 @@ class RunConfig:
         return self.start + timedelta(hours=self.early_window_hours)
 
     @property
+    def has_attendee_csvs(self) -> bool:
+        return bool(
+            self.checkin_csv
+            or self.luma_csv
+            or self.portal_csv
+            or self.registrants_csv
+            or self.accepted_csvs
+        )
+
+    @property
     def email_overlap_enabled(self) -> bool:
-        """Git↔Devpost email overlap only when check-in CSV is provided."""
-        return self.checkin_csv is not None
+        """Git↔Devpost email overlap when any attendee/check-in CSV is provided."""
+        return self.has_attendee_csvs

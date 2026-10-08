@@ -39,17 +39,6 @@ def normalize_repo_slug(repo: str) -> str:
     return raw
 
 
-def mask_email(email: str) -> str:
-    """alice@school.edu → a***@school.edu (keeps domain for organizer triage)."""
-    e = (email or "").strip()
-    if "@" not in e:
-        return e
-    local, _, domain = e.partition("@")
-    if not local:
-        return f"***@{domain}"
-    return f"{local[0]}***@{domain}"
-
-
 @dataclass
 class Project:
     title: str
@@ -63,11 +52,14 @@ class Project:
     built_with: str = ""
     opt_in_prizes: str = ""
     try_links: str = ""
-    # Populated when joining portal / check-in CSV
+    # Populated when joining Luma / portal / registrants / check-in CSVs
     checked_in_members: int = 0
     team_size: int = 0
     unchecked_emails: list[str] = field(default_factory=list)
     unmatched_emails: list[str] = field(default_factory=list)
+    accepted_members: int = 0
+    not_accepted_emails: list[str] = field(default_factory=list)
+    accepted_unmatched_emails: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -147,6 +139,9 @@ class VibeResult:
     team_emails: list[str] = field(default_factory=list)
     checked_in_members: int = 0
     team_size: int = 0
+    accepted_members: int = 0
+    not_accepted_emails: list[str] = field(default_factory=list)
+    accepted_unmatched_emails: list[str] = field(default_factory=list)
     earliest_commit_at: str = ""
     latest_commit_at: str = ""
     sample_messages: str = ""
@@ -160,20 +155,17 @@ class VibeResult:
     gemini_confidence: int = 0
     gemini_summary: str = ""
 
-    def to_dict(self, *, redact_pii: bool = True) -> dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         d = asdict(self)
         d["flags"] = "|".join(self.flags)
         d["reasons"] = " | ".join(self.reasons)
         # Export clickable GitHub URLs in CSV / JSON.
         d["primary_repo"] = github_repo_url(self.primary_repo)
         d["repos"] = "|".join(github_repo_url(r) for r in self.repos if r)
-        authors = self.author_emails
-        teams = self.team_emails
-        if redact_pii:
-            authors = [mask_email(e) for e in authors]
-            teams = [mask_email(e) for e in teams]
-        d["author_emails"] = "|".join(authors)
-        d["team_emails"] = "|".join(teams)
+        d["author_emails"] = "|".join(self.author_emails)
+        d["team_emails"] = "|".join(self.team_emails)
+        d["not_accepted_emails"] = "|".join(self.not_accepted_emails)
+        d["accepted_unmatched_emails"] = "|".join(self.accepted_unmatched_emails)
         d["team_profiles"] = "|".join(self.team_profiles)
         d["relevance_hits"] = "|".join(self.relevance_hits)
         d["relevance_sources"] = "|".join(self.relevance_sources)
