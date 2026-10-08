@@ -5,7 +5,17 @@ __pycache__/
 *.py[cod]
 .pytest_cache/
 .mypy_cache/
+.ruff_cache/
+
+# Local organizer exports / PII — keep out of git and zip shares
+data/**
+!data/.gitkeep
+!data/README.md
+
 output/*
 !output/.gitkeep
+
+# Block accidental CSV commits; allow curated samples only
 *.csv
-!examples/
+!examples/*.csv
+!tests/fixtures/*.csv
