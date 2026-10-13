@@ -1,9 +1,8 @@
 from __future__ import annotations
 
+import csv
 import re
 from pathlib import Path
-
-import pandas as pd
 
 from .models import Project
 from .scraper import extract_repos
@@ -62,20 +61,17 @@ def load_projects_csv(path: Path, *, limit: int | None = None) -> list[Project]:
     if not path.exists():
         raise FileNotFoundError(f"Projects CSV not found: {path}")
 
-    # header=None: Devpost pads/truncates team columns; we normalize by position.
-    raw = pd.read_csv(
-        path,
-        header=None,
-        dtype=str,
-        keep_default_na=False,
-        encoding="utf-8-sig",
-    )
-    if raw.empty:
-        return []
+    # stdlib csv: Devpost rows often have more team columns than the header lists.
+    with path.open(encoding="utf-8-sig", newline="") as f:
+        reader = csv.reader(f)
+        try:
+            header_row = next(reader)
+        except StopIteration:
+            return []
+        body_rows = list(reader)
 
-    header = _normalize_header([str(c) for c in raw.iloc[0].tolist()])
-    body = raw.iloc[1:]
-    if body.empty:
+    header = _normalize_header([str(c) for c in header_row])
+    if not body_rows:
         return []
 
     try:
@@ -96,7 +92,7 @@ def load_projects_csv(path: Path, *, limit: int | None = None) -> list[Project]:
     n = len(header)
 
     projects: list[Project] = []
-    for row in body.itertuples(index=False, name=None):
+    for row in body_rows:
         cells = [str(c or "") for c in row]
         if len(cells) < n:
             cells = cells + [""] * (n - len(cells))
