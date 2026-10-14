@@ -6,9 +6,16 @@ Hackathon organizers often need a fast way to spot submissions that look unfinis
 
 Typical signals: very few commits, work before hacking starts, bulk dumps, repos that don’t match the project name, and (opt-in) team emails missing from accepted/check-in CSVs. An optional Gemini pass can add a second opinion on flagged rows.
 
-Works with **any hackathon hosted on Devpost**. Built and tested against StormHacks-style exports.
+Works with **any hackathon hosted on Devpost**. Built around SFU Surge portal / Luma-style check-in when you have it, and fully usable as **Devpost-only** (projects export + event window — no attendee CSVs required).
 
-**This tool does not disqualify anyone.** `marked.csv` is a **review queue** for organizers — every flag needs a human decision. High scores and tags like `PRE_START_DQ` mean “look at this first,” not “auto-DQ.”
+**This tool does not disqualify anyone.** `marked.csv` is a **review queue** for organizers — every flag needs a human decision. High scores and tags like `PRE_START_REVIEW` mean “look at this first,” not “auto-DQ.”
+
+## Modes
+
+| Mode | What you pass | What you get |
+|------|---------------|--------------|
+| **Devpost-only** | `--projects-csv` + `--start` / `--end` | Git-history review queue |
+| **+ attendees** | Add `--portal-csv` / `--luma-csv` / `--registrants-csv` / `--accepted-csv` | Same queue, plus acceptance/check-in flags **only on already-flagged** rows |
 
 ## Pipeline
 
@@ -20,6 +27,54 @@ Works with **any hackathon hosted on Devpost**. Built and tested against StormHa
 5. Git history  window scoring + project/hackathon name in commits/README
 6. Gemini       optional second-pass (`--gemini`)
 ```
+
+## Project structure
+
+```text
+devpost-vibe-check/
+├── pyproject.toml          # package meta, pytest + ruff config
+├── requirements.txt        # runtime deps
+├── requirements-dev.txt    # pytest, ruff
+├── README.md
+├── .env.example / .env     # GITHUB_TOKEN, optional Gemini keys
+├── .gitignore
+│
+├── .github/workflows/
+│   └── ci.yml
+│
+├── vibe_check/             # main package (python -m vibe_check)
+│   ├── __main__.py         # entry → cli.main()
+│   ├── __init__.py         # version
+│   ├── cli.py              # argparse only
+│   ├── pipeline.py         # orchestration (load → scrape → score → report)
+│   ├── config.py           # RunConfig, presets, thresholds
+│   ├── models.py           # Project, RepoAnalysis, VibeResult
+│   ├── projects_csv.py     # load organizer projects export
+│   ├── scraper.py          # Devpost pages → GitHub links/users
+│   ├── github_client.py    # commits, repos, history
+│   ├── relevance.py        # name/README/hackathon matching
+│   ├── scoring.py          # flags + suspicion scores
+│   ├── attendees.py        # portal / Luma / registrants CSVs (opt-in)
+│   ├── gemini_scan.py      # optional second-pass LLM review
+│   ├── report.py           # CSV/JSON/MD outputs + console tables
+│   └── http_util.py        # shared HTTP client
+│
+├── data/                   # real exports (gitignored except README/.gitkeep)
+├── examples/               # sample CSVs for smoke runs
+├── output/                 # marked / likely_safe / combined / report
+│
+└── tests/
+    ├── conftest.py
+    ├── fixtures/           # sample CSVs for tests
+    ├── test_attendees.py
+    ├── test_fixtures.py
+    ├── test_models.py
+    ├── test_projects_csv.py
+    ├── test_relevance.py
+    └── test_scoring.py
+```
+
+`cli` → `pipeline` loads projects → `scraper` + `github_client` gather → `relevance` + `scoring` (+ optional `attendees` / `gemini_scan`) → `report` writes `output/`.
 
 ## Quick start
 
@@ -36,9 +91,17 @@ cp .env.example .env
 
 Naive `--start` / `--end` are interpreted in `--tz` (default `America/Los_Angeles`).
 
+## Config precedence
+
+1. **CLI flag** (if passed)
+2. **Env var** / `.env` (used as the argparse default when the flag is omitted)
+3. **Preset / code default** (`--preset` → `min_score`; other knobs in `config.py`)
+
+Example: `--min-score 40` overrides `--preset review` (30). `PROJECTS_CSV` in `.env` is used only if you omit `--projects-csv`.
+
 ## Example commands
 
-### Full review run (default preset)
+Base Devpost-only run (default `--preset review`):
 
 ```bash
 python -m vibe_check \
@@ -46,129 +109,49 @@ python -m vibe_check \
   --hackathon https://your-event.devpost.com \
   --start 2026-10-03T12:00:00 \
   --end 2026-10-04T12:00:00 \
-  --tz America/Los_Angeles \
-  --preset review
+  --tz America/Los_Angeles
 ```
 
-### Smoke test (first N projects, more workers)
+Same command, only the changed flags:
 
 ```bash
-python -m vibe_check \
-  --projects-csv path/to/projects-export.csv \
-  --hackathon https://your-event.devpost.com \
-  --start 2026-10-03T12:00:00 \
-  --end 2026-10-04T12:00:00 \
-  --limit 12 \
-  --workers 8
-```
+# Smoke test
+python -m vibe_check ... --limit 12 --workers 8
 
-### Stricter / looser flag threshold
+# Stricter / looser review threshold
+python -m vibe_check ... --preset strict    # score ≥ 15
+python -m vibe_check ... --preset loose     # score ≥ 50
+python -m vibe_check ... --min-score 40     # custom cutoff
 
-```bash
-# Flag more projects for review (score ≥ 15)
-python -m vibe_check ... --preset strict
-
-# Flag fewer projects (score ≥ 50)
-python -m vibe_check ... --preset loose
-
-# Custom cutoff
-python -m vibe_check ... --min-score 40
-```
-
-### With portal + Luma + Devpost registrants
-
-```bash
-python -m vibe_check \
-  --projects-csv path/to/projects-export.csv \
-  --hackathon https://your-event.devpost.com \
-  --start 2026-10-03T12:00:00 \
-  --end 2026-10-04T12:00:00 \
-  --portal-csv path/to/portal-export.csv \
-  --luma-csv path/to/luma-guests.csv \
-  --registrants-csv path/to/devpost-registrants.csv
-```
-
-### Portal only (accepted + day-of check-in column)
-
-```bash
-python -m vibe_check \
-  --projects-csv path/to/projects-export.csv \
-  --hackathon https://your-event.devpost.com \
-  --start 2026-10-03T12:00:00 \
-  --end 2026-10-04T12:00:00 \
+# SFU Surge portal (+ optional check-in column)
+python -m vibe_check ... \
   --portal-csv path/to/portal-export.csv \
   --checkin-column "StormHacks 2026 Check In"
-```
 
-### Auto-detect attendee CSV format (repeatable)
+# Luma / registrants / auto-detect lists (repeatable)
+python -m vibe_check ... --luma-csv path/to/luma-guests.csv
+python -m vibe_check ... --registrants-csv path/to/devpost-registrants.csv
+python -m vibe_check ... --accepted-csv path/to/any-list.csv --accepted-csv path/to/another.csv
 
-```bash
-python -m vibe_check \
-  --projects-csv path/to/projects-export.csv \
-  --hackathon https://your-event.devpost.com \
-  --start 2026-10-03T12:00:00 \
-  --end 2026-10-04T12:00:00 \
-  --accepted-csv path/to/luma-or-portal-or-list.csv \
-  --accepted-csv path/to/another-list.csv
-```
-
-### Optional Gemini second-pass
-
-```bash
-# GEMINI_API_KEY in .env; scans marked + near-misses
-python -m vibe_check \
-  --projects-csv path/to/projects-export.csv \
-  --hackathon https://your-event.devpost.com \
-  --start 2026-10-03T12:00:00 \
-  --end 2026-10-04T12:00:00 \
-  --gemini
-
-# Scan every project (costlier)
+# Optional Gemini second-pass (GEMINI_API_KEY in .env)
+python -m vibe_check ... --gemini
 python -m vibe_check ... --gemini --gemini-all
-
-# Pick a model
 python -m vibe_check ... --gemini --gemini-model gemini-2.5-flash
-```
 
-### Resume a crashed / interrupted run
+# Resume (same --start/--end/--min-score as checkpoint, or it refuses)
+python -m vibe_check ... --resume
 
-```bash
-# Same --start/--end/--min-score as the checkpoint or it refuses
-python -m vibe_check \
-  --projects-csv path/to/projects-export.csv \
-  --hackathon https://your-event.devpost.com \
-  --start 2026-10-03T12:00:00 \
-  --end 2026-10-04T12:00:00 \
-  --resume
-```
+# Use only GitHub links already in the CSV
+python -m vibe_check ... --no-scrape-devpost --no-scrape-users
 
-### Faster / offline-ish (skip Devpost page scrapes)
-
-```bash
-# Only use GitHub links already in the organizer CSV
-python -m vibe_check \
-  --projects-csv path/to/projects-export.csv \
-  --hackathon https://your-event.devpost.com \
-  --start 2026-10-03T12:00:00 \
-  --end 2026-10-04T12:00:00 \
-  --no-scrape-devpost \
-  --no-scrape-users
-```
-
-### Public gallery instead of organizer CSV
-
-```bash
+# Public gallery instead of organizer CSV
 python -m vibe_check \
   --from-gallery \
   --hackathon https://your-event.devpost.com \
   --start 2026-10-03T12:00:00 \
   --end 2026-10-04T12:00:00 \
   --max-pages 5
-```
 
-### Using env vars (minimal flags)
-
-```bash
 # After filling .env (PROJECTS_CSV, HACKATHON_*, GITHUB_TOKEN, …)
 python -m vibe_check --preset review --workers 8
 ```
@@ -178,7 +161,7 @@ python -m vibe_check --preset review --workers 8
 - **Organizer CSV first** (galleries are often closed early)
 - **Devpost + user scrape on** by default
 - **One row per project** (multi-repo teams collapsed; worst *candidate* repo wins — name/relevance matched, not teammate portfolio junk)
-- **Pre-start commits = high-priority flag** (`PRE_START_DQ`) for the review queue — still not an auto-DQ
+- **Pre-start commits = high-priority flag** (`PRE_START_REVIEW`) for the review queue — still not an auto-DQ
 - **Attendee / check-in joins are opt-in** — only when you pass `--luma-csv` / `--portal-csv` / `--registrants-csv` / `--accepted-csv` / `--checkin-csv`, and acceptance/check-in **flags only apply to already-flagged** projects
 - **`output/` cleared** at the start of each run (unless `--resume`)
 
@@ -200,7 +183,7 @@ Sort is most-suspicious first. Open the **project URL** and **primary_repo**, th
 
 | You see… | What to verify |
 |----------|----------------|
-| `PRE_START_DQ` / `PRE_START_COMMITS` | Were commits really before start, or timezone / wrong repo / reused homework? |
+| `PRE_START_REVIEW` / `PRE_START_COMMITS` | Were commits really before start, or timezone / wrong repo / reused homework? |
 | `LOW_COMMITS` / `BULK_DUMP` | Tiny history + large tree → possible zip dump; hardware/Figma may be fine (`LIKELY_NONCODE`) |
 | `ALL_COMMITS_OUTSIDE_WINDOW` | Wrong repo linked, or work entirely outside the event? |
 | `NO_PROJECT_RELEVANCE` | Repo name/README don’t match the Devpost title — confirm it’s the submission |
@@ -218,7 +201,7 @@ Useful columns: `suspicion_score`, `flags`, `reasons`, `primary_repo`, `pre_star
 | `LOW_COMMITS_NONCODE` | Low commits, hardware/Figma/no-code (soft) |
 | `ALL_COMMITS_OUTSIDE_WINDOW` | Every commit outside `[start, end]` |
 | `PRE_START_COMMITS` / `ALL_COMMITS_BEFORE_START` / `MEANINGFUL_WORK_BEFORE_START` | Work before start |
-| `PRE_START_DQ` | Priority review flag — any pre-start commit activity (not an auto-DQ) |
+| `PRE_START_REVIEW` | Priority review flag — any pre-start commit activity (not an auto-DQ) |
 | `POST_END_COMMITS` / `POST_END_HEAVY` | Work after end (soft unless it dominates) |
 | `BULK_DUMP` | Tiny history + large repo size |
 | `REPO_UNAVAILABLE` | Private / 404 / blocked |
@@ -263,7 +246,19 @@ Useful columns: `suspicion_score`, `flags`, `reasons`, `primary_repo`, `pre_star
 | `--resume` | off — refuses if checkpoint window/`min_score` differs |
 | `--limit` | off — first N projects (smoke tests) |
 
-Gemini (optional): set `GEMINI_API_KEY`, then `--gemini`. Reviews **flagged + near-misses** by default; use `--gemini-all` for everyone. Never clears `PRE_START_DQ` (still a flag, not a verdict).
+Gemini (optional): set `GEMINI_API_KEY`, then `--gemini`. Reviews **flagged + near-misses** by default; use `--gemini-all` for everyone. Never clears `PRE_START_REVIEW` (still a flag, not a verdict).
+
+## Known limitations
+
+These can produce misleading signals — treat every flag as a prompt to look, not a verdict:
+
+- **Private / 404 repos** — no history to score (`REPO_UNAVAILABLE`); ask the team for access.
+- **Force-pushed or rewritten history** — GitHub only sees the current history.
+- **Rebasing / amend** — author date and committer date can diverge. Scoring uses the **earlier of author date and committer date** (`min`), so a rebase that preserves old author dates still counts as pre-start work.
+- **Squashed histories** — a single large commit can look like a bulk dump or hide earlier work.
+- **Wrong repo linked** — portfolio or homework repos can look “pre-built”; relevance checks help but are heuristic.
+- **Timezone mistakes** — naive `--start`/`--end` follow `--tz`; wrong TZ shifts the window.
+- **Hidden author emails** — GitHub noreply addresses skip email-overlap checks (`AUTHOR_EMAILS_HIDDEN`).
 
 ## Operational notes
 
