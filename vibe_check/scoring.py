@@ -10,8 +10,8 @@ INITIAL_MSG_RE = re.compile(
     re.I,
 )
 
-# Any of these = automatic mark (score floored to min_score). Pre-start = DQ.
-PRE_START_DQ_FLAGS = frozenset(
+# Any of these = automatic mark (score floored to min_score). Priority review only.
+PRE_START_REVIEW_FLAGS = frozenset(
     {
         "PRE_START_COMMITS",
         "ALL_COMMITS_BEFORE_START",
@@ -257,14 +257,14 @@ def _score_single_repo(
             "no project/hackathon name in repo name, recent commits, or README"
         )
 
-    # Hard rule: any pre-start commit activity → always marked for review/DQ.
-    if PRE_START_DQ_FLAGS.intersection(flags):
+    # Hard rule: any pre-start commit activity → always marked for priority review.
+    if PRE_START_REVIEW_FLAGS.intersection(flags):
         floor = max(config.min_score, 30)
         if score < floor:
             score = floor
-        if "PRE_START_DQ" not in flags:
-            flags.append("PRE_START_DQ")
-            reasons.append("pre-start work = automatic mark (instant fail)")
+        if "PRE_START_REVIEW" not in flags:
+            flags.append("PRE_START_REVIEW")
+            reasons.append("pre-start work = priority review (not an auto-DQ)")
 
     return score, flags, reasons
 
@@ -311,7 +311,7 @@ def score_project(
             f"flags={','.join(flags) or '-'}"
         )
         if analysis not in scored_set:
-            # Keep detail for transparency, but don't let portfolio junk DQ the project.
+            # Keep detail for transparency, but don't let portfolio junk mark the project.
             continue
         for f in flags:
             if f not in all_flags:
@@ -332,7 +332,7 @@ def score_project(
         "ALL_COMMITS_OUTSIDE_WINDOW",
         "ALL_COMMITS_BEFORE_START",
         "PRE_START_COMMITS",
-        "PRE_START_DQ",
+        "PRE_START_REVIEW",
         "BULK_DUMP",
         "REPO_UNAVAILABLE",
         "COMMIT_FETCH_INCOMPLETE",
@@ -341,14 +341,14 @@ def score_project(
         if severe in all_flags and severe not in flags:
             flags.append(severe)
 
-    # Hard rule: pre-start on a *candidate* repo → always marked.
-    if PRE_START_DQ_FLAGS.intersection(all_flags) or "PRE_START_DQ" in all_flags:
+    # Hard rule: pre-start on a *candidate* repo → always marked for priority review.
+    if PRE_START_REVIEW_FLAGS.intersection(all_flags) or "PRE_START_REVIEW" in all_flags:
         floor = max(config.min_score, 30)
         if score < floor:
             score = floor
-        if "PRE_START_DQ" not in flags:
-            flags.append("PRE_START_DQ")
-            reasons.append("pre-start work on submission repo = automatic mark")
+        if "PRE_START_REVIEW" not in flags:
+            flags.append("PRE_START_REVIEW")
+            reasons.append("pre-start work on submission repo = priority review")
 
     if noncode and "LIKELY_NONCODE" not in flags:
         flags.append("LIKELY_NONCODE")

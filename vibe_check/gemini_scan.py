@@ -148,8 +148,11 @@ class GeminiScanner:
         elif verdict == "likely_ok" and conf >= 70:
             if "GEMINI_OK" not in result.flags:
                 result.flags.append("GEMINI_OK")
-            # Informational only — never undo PRE_START_DQ / hard heuristics.
-            if "PRE_START_DQ" not in result.flags and "PRE_START_COMMITS" not in result.flags:
+            # Informational only — never undo PRE_START_REVIEW / hard heuristics.
+            if (
+                "PRE_START_REVIEW" not in result.flags
+                and "PRE_START_COMMITS" not in result.flags
+            ):
                 result.reasons.append(f"Gemini likely_ok ({conf}): {result.gemini_summary}")
 
         return result
@@ -171,7 +174,11 @@ class GeminiScanner:
         targets = [
             r
             for r in results
-            if (not marked_only) or r.suspicion_score >= config.min_score or "PRE_START_DQ" in r.flags
+            if (
+                (not marked_only)
+                or r.suspicion_score >= config.min_score
+                or "PRE_START_REVIEW" in r.flags
+            )
         ]
         # Also include near-misses when marked_only (score within 10 of threshold)
         if marked_only:

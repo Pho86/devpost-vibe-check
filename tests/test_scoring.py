@@ -37,7 +37,7 @@ def test_pre_start_commits_auto_mark(run_config: RunConfig):
     )
     result = score_project(_project(), [analysis], run_config)
     assert "PRE_START_COMMITS" in result.flags
-    assert "PRE_START_DQ" in result.flags
+    assert "PRE_START_REVIEW" in result.flags
     assert result.suspicion_score >= run_config.min_score
 
 
@@ -51,7 +51,7 @@ def test_healthy_in_window_repo_not_marked(run_config: RunConfig):
         relevance_hits=["cool-app"],
     )
     result = score_project(_project(), [analysis], run_config)
-    assert "PRE_START_DQ" not in result.flags
+    assert "PRE_START_REVIEW" not in result.flags
     assert result.suspicion_score < run_config.min_score
 
 
