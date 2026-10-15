@@ -26,6 +26,7 @@ from .report import (
     write_json,
     write_markdown,
 )
+from .review_site import write_review_site
 from .scoring import bucket_results, score_project
 from .scraper import DevpostScraper, guess_hackathon_url
 
@@ -462,6 +463,13 @@ def run_pipeline(config: RunConfig, *, use_gallery: bool = False) -> int:
         summary=summary,
         meta=meta,
     )
+    review_html = write_review_site(
+        out / "review" / "index.html",
+        marked=marked,
+        likely_safe=likely_safe,
+        summary=summary,
+        meta=meta,
+    )
 
     print_summary(summary)
     print_flagged_highlights(marked, limit=10)
@@ -471,7 +479,8 @@ def run_pipeline(config: RunConfig, *, use_gallery: bool = False) -> int:
         f"  {out / 'marked.csv'}\n"
         f"  {out / 'likely_safe.csv'}\n"
         f"  {out / 'combined.csv'}\n"
-        f"  {out / 'report.md'}",
+        f"  {out / 'report.md'}\n"
+        f"  {review_html}  (share with co-reviewers)",
         flush=True,
     )
     return 0
