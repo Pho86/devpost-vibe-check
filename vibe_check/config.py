@@ -121,6 +121,7 @@ class RunConfig:
     gemini: bool = False
     gemini_model: str = DEFAULT_GEMINI_MODEL
     gemini_all: bool = False  # False = marked + near-misses only
+    publish: bool = False  # upload review/ to Netlify with a unique share code
 
     # Back-compat alias used by older call sites / checkpoints.
     @property

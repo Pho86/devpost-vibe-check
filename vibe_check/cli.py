@@ -215,6 +215,16 @@ def build_parser() -> argparse.ArgumentParser:
         default=os.environ.get("GEMINI_MODEL") or DEFAULT_GEMINI_MODEL,
         help=f"Gemini model id (default: {DEFAULT_GEMINI_MODEL}).",
     )
+    p.add_argument(
+        "--publish",
+        action="store_true",
+        default=os.environ.get("VIBE_PUBLISH", "").strip().lower()
+        in {"1", "true", "yes", "on"},
+        help=(
+            "After the run, upload output/review to Netlify under a unique share "
+            "code (needs NETLIFY_AUTH_TOKEN). Or set VIBE_PUBLISH=1."
+        ),
+    )
     p.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
     return p
 
@@ -296,6 +306,7 @@ def run(argv: list[str] | None = None) -> int:
         gemini=bool(args.gemini),
         gemini_model=str(args.gemini_model or DEFAULT_GEMINI_MODEL),
         gemini_all=bool(args.gemini_all),
+        publish=bool(args.publish),
     )
 
     return run_pipeline(config, use_gallery=use_gallery)

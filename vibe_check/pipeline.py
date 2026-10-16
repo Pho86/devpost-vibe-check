@@ -463,13 +463,36 @@ def run_pipeline(config: RunConfig, *, use_gallery: bool = False) -> int:
         summary=summary,
         meta=meta,
     )
+    review_dir = out / "review"
     review_html = write_review_site(
-        out / "review" / "index.html",
+        review_dir / "index.html",
         marked=marked,
         likely_safe=likely_safe,
         summary=summary,
         meta=meta,
     )
+
+    publish_line = ""
+    if config.publish:
+        from .publish import publish_review_site, write_share_sidecar
+
+        try:
+            published = publish_review_site(review_dir)
+            write_share_sidecar(review_dir, published)
+            publish_line = (
+                f"\n  Share link : {published.url}\n"
+                f"  Share code : {published.code}\n"
+                f"  (also wrote {review_dir / 'share.txt'})"
+            )
+            print(
+                f"\nPublished review site\n"
+                f"  url  : {published.url}\n"
+                f"  code : {published.code}",
+                flush=True,
+            )
+        except Exception as exc:
+            print(f"ERROR: --publish failed ({exc})", flush=True)
+            return 2
 
     print_summary(summary)
     print_flagged_highlights(marked, limit=10)
@@ -480,7 +503,8 @@ def run_pipeline(config: RunConfig, *, use_gallery: bool = False) -> int:
         f"  {out / 'likely_safe.csv'}\n"
         f"  {out / 'combined.csv'}\n"
         f"  {out / 'report.md'}\n"
-        f"  {review_html}  (share with co-reviewers)",
+        f"  {review_html}  (share with co-reviewers)"
+        f"{publish_line}",
         flush=True,
     )
     return 0

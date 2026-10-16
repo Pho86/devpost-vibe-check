@@ -58,6 +58,7 @@ devpost-vibe-check/
 │   ├── gemini_scan.py      # optional second-pass LLM review
 │   ├── report.py           # CSV/JSON/MD outputs + console tables
 │   ├── review_site.py      # static HTML review queue for co-reviewers
+│   ├── publish.py          # --publish → Netlify unique share URL
 │   └── http_util.py        # shared HTTP client
 │
 ├── data/                   # real exports (gitignored except README/.gitkeep)
@@ -177,7 +178,15 @@ python -m vibe_check --preset review --workers 8
 | `review/index.html` | **Shareable review site** — flagged first, filterable; no team emails |
 | `all_results.json` | Resume checkpoint (keeps full emails locally) |
 
-Open `output/review/index.html` in a browser (or zip that folder) for co-reviewers. Full PII stays in the local CSVs — the HTML omits team emails.
+Open `output/review/index.html` in a browser, or pass **`--publish`** to upload it automatically:
+
+```bash
+# NETLIFY_AUTH_TOKEN in .env
+python -m vibe_check ... --publish
+# → https://vibe-<code>.netlify.app   (code also in output/review/share.txt)
+```
+
+Or set `VIBE_PUBLISH=1` so every run publishes. Optional `NETLIFY_SITE_ID` reuses one Netlify site (still gets a unique deploy URL). Full PII stays in the local CSVs — the HTML omits team emails.
 
 Sample inputs (fake `@example.com` data): `examples/`. Put real organizer exports in `data/` (gitignored).
 
@@ -247,6 +256,7 @@ Useful columns: `suspicion_score`, `flags`, `reasons`, `primary_repo`, `pre_star
 | `--gemini` | off — needs `GEMINI_API_KEY` + `google-genai` |
 | `--gemini-all` | off — scan every project (costlier) |
 | `--gemini-model` | `gemini-2.5-flash` |
+| `--publish` | off — upload `review/` to Netlify (`NETLIFY_AUTH_TOKEN`; or `VIBE_PUBLISH=1`) |
 | `--resume` | off — refuses if checkpoint window/`min_score` differs |
 | `--limit` | off — first N projects (smoke tests) |
 
