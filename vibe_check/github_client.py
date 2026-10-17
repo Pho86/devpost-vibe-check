@@ -409,19 +409,32 @@ class GitHubClient:
             owner = repo.split("/")[0] if "/" in repo else ""
             if owner and owner.lower() not in {u.lower() for u in logins}:
                 logins.append(owner)
+        for profile in project.team_profiles:
+            if profile and profile.lower() not in {u.lower() for u in logins}:
+                logins.append(profile)
 
         if not logins:
             return []
 
         start = self.config.start - timedelta(days=1)
         end = self.config.end + timedelta(days=2)
-        found: list[str] = []
         seen = {r.lower() for r in project.github_repos}
+        from .relevance import hackathon_tokens, project_tokens
+
+        proj_needles = [t for t in project_tokens(project) if len(t) >= 5]
+        hack_needles = [t for t in hackathon_tokens(self.config.hackathon_url) if len(t) >= 5]
+
+        # Pass 1: project-name matches (incl. collaborator repos via type=all).
+        # Pass 2: only if still empty, allow one hackathon-named repo in-window.
+        name_hits: list[str] = []
+        hack_fallback: list[str] = []
 
         for login in logins:
+            # type=all: include collaborator repos (common when one teammate owns
+            # the submission and others only appear as collaborators).
             resp = self._get(
                 f"/users/{login}/repos",
-                {"sort": "pushed", "per_page": 30, "type": "owner"},
+                {"sort": "pushed", "per_page": 50, "type": "all"},
             )
             time.sleep(GITHUB_DELAY_S)
             if resp.status_code != 200:
@@ -443,34 +456,30 @@ class GitHubClient:
                         in_window = start <= pushed <= end
                     except Exception:
                         in_window = False
-                # Accept strong name match, or moderate name + window activity,
-                # or exact-ish title compact match via needles in name.
-                from .relevance import hackathon_tokens, project_tokens
-
-                proj_needles = [t for t in project_tokens(project) if len(t) >= 5]
-                hack_needles = [t for t in hackathon_tokens(self.config.hackathon_url) if len(t) >= 5]
                 title_hits = find_mentions(name, proj_needles)
                 hack_hits = find_mentions(name, hack_needles)
-                take = False
-                if sim >= 0.85:
-                    take = True
-                elif title_hits and len(max(title_hits, key=len)) >= 5 and (
-                    in_window or sim >= 0.6
+                if sim >= 0.85 or (
+                    title_hits
+                    and len(max(title_hits, key=len)) >= 5
+                    and (in_window or sim >= 0.6)
                 ):
-                    take = True
+                    seen.add(full.lower())
+                    name_hits.append(full)
                 elif (
-                    hack_hits
+                    not project.github_repos
+                    and hack_hits
                     and in_window
-                    and not project.github_repos
                     and len(max(hack_hits, key=len)) >= 6
                 ):
-                    # Only when CSV/Devpost gave zero repos — avoid stacking
-                    # every teammate's "*-stormhacks*" portfolio repo.
-                    take = True
-                if take:
-                    seen.add(full.lower())
-                    found.append(full)
-        return found
+                    hack_fallback.append(full)
+
+        if name_hits:
+            return name_hits
+        # No project-name match anywhere — keep a single hackathon-named candidate
+        # so zero-link submissions still get a repo to score.
+        if not project.github_repos and hack_fallback:
+            return [hack_fallback[0]]
+        return []
 
     def discover_many(
         self, projects: list[Project], *, workers: int = 8
