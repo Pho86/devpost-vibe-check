@@ -29,13 +29,27 @@ def test_write_review_site_omits_emails_and_lists_flagged(tmp_path):
             bucket="likely_safe",
             total_commits=40,
             in_window_commits=40,
-        )
+        ),
+        VibeResult(
+            suspicion_score=5,
+            flags=["NO_GITHUB"],
+            reasons=["no public GitHub repo found"],
+            project_title="Missing Link",
+            project_url="https://example.devpost.com/submissions/missing",
+            primary_repo="",
+            bucket="likely_safe",
+        ),
     ]
     out = write_review_site(
         tmp_path / "review" / "index.html",
         marked=marked,
         likely_safe=safe,
-        summary={"projects_loaded": 2, "marked": 1, "likely_safe": 1},
+        summary={
+            "projects_loaded": 3,
+            "marked": 1,
+            "likely_safe": 2,
+            "no_github": 1,
+        },
         meta={
             "hackathon_url": "https://example.devpost.com",
             "window_local": "start → end",
@@ -46,6 +60,11 @@ def test_write_review_site_omits_emails_and_lists_flagged(tmp_path):
     html = out.read_text(encoding="utf-8")
     assert "Cubic" in html
     assert "PRE_START_REVIEW" in html
-    assert "Review queue" in html
+    assert "Review queue, not an auto-DQ" in html
+    assert "SFU Surge" in html
+    assert "#6466f1" in html
     assert "secret@school.edu" not in html
     assert "alice/cubic" in html or "github.com/alice/cubic" in html
+    assert "Can't find GitHub" in html
+    assert "Missing Link" in html
+    assert '"no_github"' in html
