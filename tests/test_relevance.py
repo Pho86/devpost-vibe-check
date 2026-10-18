@@ -60,6 +60,25 @@ def test_find_mentions_long_token_substring():
     )
 
 
+def test_find_mentions_fuzzy_hackathon_typo_in_repo_name():
+    # StormsHacks2026 (extra 's') should still match stormhacks / stormhacks2026
+    hits = find_mentions(
+        "Eddie-Yoshie/StormsHacks2026",
+        ["stormhacks2026", "stormhacks"],
+    )
+    assert "stormhacks" in hits or "stormhacks2026" in hits
+
+
+def test_short_devpost_title_still_gets_hackathon_needles():
+    # Title "OK" is useless for name_similarity; needles must still include hackathon.
+    needles = relevance_needles(
+        _project(title="OK", slug="ok"),
+        "https://stormhacks2026.devpost.com",
+    )
+    assert "stormhacks" in needles or "stormhacks2026" in needles
+    assert find_mentions("StormsHacks2026", needles)
+
+
 def test_name_similarity_exact_and_partial():
     p = _project(title="Cool App", slug="cool-app")
     assert name_similarity("alice/cool-app", p) == 1.0

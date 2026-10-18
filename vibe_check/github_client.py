@@ -372,10 +372,20 @@ class GitHubClient:
 
         sim = name_similarity(analysis.repo, project)
         analysis.name_match_score = sim
-        if sim >= 0.6:
+        # Always scan the repo short name for project/hackathon needles.
+        # Title↔repo similarity alone is not required — short Devpost titles
+        # like "OK" never match StormsHacks2026 even when the hackathon name
+        # is clearly in the repo.
+        repo_short = analysis.repo.split("/")[-1]
+        repo_hits = find_mentions(repo_short, needles)
+        if repo_hits:
             sources.append("repo_name")
-            title_hits = find_mentions(analysis.repo.split("/")[-1], needles)
-            for h in title_hits or needles[:1]:
+            for h in repo_hits:
+                if h not in hits:
+                    hits.append(h)
+        elif sim >= 0.6:
+            sources.append("repo_name")
+            for h in needles[:1]:
                 if h not in hits:
                     hits.append(h)
 

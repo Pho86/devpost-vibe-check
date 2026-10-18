@@ -96,3 +96,23 @@ def test_attendee_flags_only_when_already_marked(run_config: RunConfig):
 def test_score_no_repo(run_config: RunConfig):
     result = score_project(_project(github_repos=[]), [], run_config)
     assert "NO_GITHUB" in result.flags
+
+
+def test_hackathon_in_repo_name_avoids_no_project_relevance(run_config: RunConfig):
+    # Short Devpost title + hackathon-named repo (StormsHacks typo) should not
+    # get NO_PROJECT_RELEVANCE once relevance_sources is populated.
+    analysis = RepoAnalysis(
+        repo="Eddie-Yoshie/StormsHacks2026",
+        total_commits=65,
+        in_window_commits=65,
+        name_match_score=0.0,
+        relevance_sources=["repo_name"],
+        relevance_hits=["stormhacks"],
+    )
+    result = score_project(
+        _project(title="OK", slug="ok", github_repos=["Eddie-Yoshie/StormsHacks2026"]),
+        [analysis],
+        run_config,
+    )
+    assert "NO_PROJECT_RELEVANCE" not in result.flags
+    assert "PROJECT_RELEVANCE" in result.flags

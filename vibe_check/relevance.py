@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+from difflib import SequenceMatcher
 from urllib.parse import urlparse
 
 from .models import Project
@@ -178,10 +179,34 @@ def relevance_needles(project: Project, hackathon_url: str) -> list[str]:
     return needles
 
 
+def _fuzzy_in_compact(compact: str, needle: str, min_ratio: float = 0.88) -> bool:
+    """
+    Allow a single-character typo/plural slip in long hackathon tokens
+    (e.g. StormsHacks2026 vs stormhacks).
+    """
+    if not compact or len(needle) < 6:
+        return False
+    if needle in compact:
+        return True
+    n = len(needle)
+    # Whole-compact compare when lengths are close (repo ≈ hackathon name).
+    if abs(len(compact) - n) <= 2 and SequenceMatcher(None, needle, compact).ratio() >= min_ratio:
+        return True
+    for win_len in (n, n + 1, n - 1):
+        if win_len < 6 or win_len > len(compact):
+            continue
+        for i in range(len(compact) - win_len + 1):
+            window = compact[i : i + win_len]
+            if SequenceMatcher(None, needle, window).ratio() >= min_ratio:
+                return True
+    return False
+
+
 def find_mentions(blob: str, needles: list[str]) -> list[str]:
     """
     Find needles in text. Short needles (<6) require a word-ish boundary so
-    'rail' does not hit inside unrelated words; long/compact forms may substring.
+    'rail' does not hit inside unrelated words; long/compact forms may substring
+    or fuzzy-match (one-char slip) against the compacted blob.
     """
     text = (blob or "").lower()
     compact = _compact(text)
@@ -190,7 +215,7 @@ def find_mentions(blob: str, needles: list[str]) -> list[str]:
         if len(n) < 4:
             continue
         if len(n) >= 6:
-            if n in text or n in compact:
+            if n in text or n in compact or _fuzzy_in_compact(compact, n):
                 hits.append(n)
             continue
         # Short token: word boundary in text, or whole compact equality/containment
