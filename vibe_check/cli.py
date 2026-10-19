@@ -218,8 +218,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument(
         "--publish",
         action="store_true",
-        default=os.environ.get("VIBE_PUBLISH", "").strip().lower()
-        in {"1", "true", "yes", "on"},
+        default=os.environ.get("VIBE_PUBLISH", "").strip().lower() in {"1", "true", "yes", "on"},
         help=(
             "After the run, upload output/review to Netlify under a unique share "
             "code (needs NETLIFY_AUTH_TOKEN). Or set VIBE_PUBLISH=1."

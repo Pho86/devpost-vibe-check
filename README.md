@@ -34,13 +34,14 @@ Works with any Devpost hackathon. Built for SFU Surge portal / Luma-style check-
 devpost-vibe-check/
 ├── pyproject.toml          # package meta, pytest + ruff config
 ├── requirements.txt        # runtime deps
-├── requirements-dev.txt    # pytest, ruff
+├── requirements-dev.txt    # pinned pytest, ruff, pre-commit
+├── .pre-commit-config.yaml # local ruff check + format on commit
 ├── README.md
 ├── .env.example / .env     # GITHUB_TOKEN, optional Gemini / Netlify keys
 ├── .gitignore
 │
 ├── .github/workflows/
-│   └── ci.yml
+│   └── ci.yml              # lint job, then pytest on 3.11 + 3.12
 │
 ├── vibe_check/             # main package (python -m vibe_check)
 │   ├── __main__.py         # entry → cli.main()
@@ -87,7 +88,8 @@ cd devpost-vibe-check
 python -m venv .venv
 source .venv/Scripts/activate   # or: source .venv/bin/activate
 pip install -r requirements.txt
-# pip install -r requirements-dev.txt    # + pytest, ruff
+# pip install -r requirements-dev.txt    # + pytest, ruff, pre-commit
+# pre-commit install                     # ruff check/format on every commit
 cp .env.example .env
 # set GITHUB_TOKEN=...
 # put real exports in data/ (gitignored); try examples/*.csv first

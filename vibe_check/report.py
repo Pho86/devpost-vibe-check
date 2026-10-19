@@ -26,6 +26,7 @@ def clear_output_dir(path: Path) -> None:
             except OSError:
                 pass
 
+
 CSV_FIELDS = [
     "rank",
     "bucket",
@@ -156,9 +157,7 @@ def write_markdown(
         ]
         for r in _ranked(marked)[:80]:
             repo_link = (
-                f"[{r.primary_repo}]({github_repo_url(r.primary_repo)})"
-                if r.primary_repo
-                else "-"
+                f"[{r.primary_repo}]({github_repo_url(r.primary_repo)})" if r.primary_repo else "-"
             )
             lines.append(
                 f"| {r.rank} | {r.suspicion_score} | "
@@ -177,9 +176,7 @@ def write_markdown(
     ]
     for r in _ranked(likely_safe)[:30]:
         repo_link = (
-            f"[{r.primary_repo}]({github_repo_url(r.primary_repo)})"
-            if r.primary_repo
-            else "-"
+            f"[{r.primary_repo}]({github_repo_url(r.primary_repo)})" if r.primary_repo else "-"
         )
         lines.append(
             f"| {r.rank} | {r.suspicion_score} | "
@@ -217,8 +214,7 @@ def print_flagged_highlights(rows: list[VibeResult], *, limit: int = 10) -> None
         return
 
     console.print(
-        f"\n[bold]Top {min(limit, len(ranked))} flagged — verify manually "
-        "(not auto-DQ)[/bold]"
+        f"\n[bold]Top {min(limit, len(ranked))} flagged — verify manually (not auto-DQ)[/bold]"
     )
     for row in ranked[:limit]:
         repo = row.primary_repo or "-"
@@ -230,9 +226,7 @@ def print_flagged_highlights(rows: list[VibeResult], *, limit: int = 10) -> None
         for reason in (row.reasons or [])[:2]:
             console.print(f"     • {reason}")
     if len(ranked) > limit:
-        console.print(
-            f"  … and {len(ranked) - limit} more in marked.csv / report.md"
-        )
+        console.print(f"  … and {len(ranked) - limit} more in marked.csv / report.md")
 
 
 def print_table(rows: list[VibeResult], *, title: str, limit: int = 25) -> None:

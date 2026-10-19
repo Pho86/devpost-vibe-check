@@ -40,9 +40,7 @@ def test_project_tokens_skip_tagline():
 
 
 def test_relevance_needles_longest_first():
-    needles = relevance_needles(
-        _project(), "https://stormhacks2026.devpost.com"
-    )
+    needles = relevance_needles(_project(), "https://stormhacks2026.devpost.com")
     assert needles
     assert needles == sorted(needles, key=len, reverse=True)
 

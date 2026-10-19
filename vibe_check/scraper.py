@@ -172,9 +172,7 @@ class DevpostScraper:
                 projects.append(proj)
                 added += 1
 
-            m = COUNT_RE.search(
-                BeautifulSoup(html, "html.parser").get_text(" ", strip=True)
-            )
+            m = COUNT_RE.search(BeautifulSoup(html, "html.parser").get_text(" ", strip=True))
             if m:
                 total = int(m.group(3))
                 print(
@@ -228,9 +226,7 @@ class DevpostScraper:
                 if not _valid_software_slug(slug):
                     continue
                 title_el = block.select_one("h5, h3, .software-name, .entry-title")
-                title = _normalize_title(
-                    title_el.get_text(" ", strip=True) if title_el else ""
-                )
+                title = _normalize_title(title_el.get_text(" ", strip=True) if title_el else "")
                 soft = f"https://devpost.com/software/{slug}"
                 if title:
                     title_map.setdefault(title, soft)
@@ -270,9 +266,7 @@ class DevpostScraper:
         missing = [
             p
             for p in projects
-            if not (p.url or "").startswith("http")
-            and p.slug
-            and p.slug.lower() != "untitled"
+            if not (p.url or "").startswith("http") and p.slug and p.slug.lower() != "untitled"
         ]
         if not missing:
             return 0
@@ -516,9 +510,7 @@ class DevpostScraper:
                         print(f"  scrape failed [{original.slug}]: {exc}", flush=True)
                     progress.advance(task_id)
 
-    def scrape_team_users(
-        self, projects: list[Project], *, workers: int = 8
-    ) -> None:
+    def scrape_team_users(self, projects: list[Project], *, workers: int = 8) -> None:
         """
         Stage: scrape each unique Devpost team profile, merge GitHub users/repos
         back onto every project that listed that profile.
@@ -537,8 +529,7 @@ class DevpostScraper:
             return
 
         print(
-            f"[users] scraping {len(usernames)} Devpost profiles "
-            f"({workers} workers)...",
+            f"[users] scraping {len(usernames)} Devpost profiles ({workers} workers)...",
             flush=True,
         )
         workers = max(1, min(workers, len(usernames)))
@@ -576,7 +567,6 @@ class DevpostScraper:
             gained_users += max(0, len(p.github_users) - before_u)
 
         print(
-            f"[users] done — +{gained_users} GitHub user(s) "
-            f"(repos left to name/window discovery)",
+            f"[users] done — +{gained_users} GitHub user(s) (repos left to name/window discovery)",
             flush=True,
         )

@@ -6,8 +6,8 @@ on:
   pull_request:
 
 jobs:
-  smoke:
-    # Pin image so ubuntu-latest → 26.04 migration does not surprise CI.
+  lint:
+    # Fast gate — fail before the test matrix spins up.
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
@@ -16,12 +16,37 @@ jobs:
         with:
           python-version: "3.12"
           cache: pip
+          cache-dependency-path: requirements-dev.txt
+
+      - name: Install lint tools
+        run: pip install "ruff==0.16.10"
+
+      - name: Ruff check
+        run: ruff check vibe_check tests
+
+      - name: Ruff format
+        run: ruff format --check vibe_check tests
+
+  test:
+    needs: lint
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12"]
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+          cache-dependency-path: |
+            requirements.txt
+            requirements-dev.txt
 
       - name: Install dependencies
         run: pip install -r requirements-dev.txt
-
-      - name: Ruff
-        run: ruff check vibe_check tests
 
       - name: Import package
         run: python -c "import vibe_check; print(vibe_check.__version__)"

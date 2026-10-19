@@ -74,9 +74,7 @@ def _create_site(session: requests.Session, token: str, name: str) -> dict:
         timeout=60,
     )
     if resp.status_code >= 400:
-        raise RuntimeError(
-            f"Netlify create site failed ({resp.status_code}): {resp.text[:400]}"
-        )
+        raise RuntimeError(f"Netlify create site failed ({resp.status_code}): {resp.text[:400]}")
     return resp.json()
 
 
@@ -95,9 +93,7 @@ def _deploy_files(
         timeout=60,
     )
     if resp.status_code >= 400:
-        raise RuntimeError(
-            f"Netlify create deploy failed ({resp.status_code}): {resp.text[:400]}"
-        )
+        raise RuntimeError(f"Netlify create deploy failed ({resp.status_code}): {resp.text[:400]}")
     deploy = resp.json()
     deploy_id = str(deploy.get("id") or "")
     if not deploy_id:
@@ -127,8 +123,7 @@ def _deploy_files(
         )
         if put.status_code >= 400:
             raise RuntimeError(
-                f"Netlify file upload failed for {path} ({put.status_code}): "
-                f"{put.text[:300]}"
+                f"Netlify file upload failed for {path} ({put.status_code}): {put.text[:300]}"
             )
     return deploy
 
@@ -157,13 +152,9 @@ def _wait_ready(
         if state == "ready":
             return last
         if state in {"error", "failed"}:
-            raise RuntimeError(
-                f"Netlify deploy {state}: {last.get('error_message') or last}"
-            )
+            raise RuntimeError(f"Netlify deploy {state}: {last.get('error_message') or last}")
         time.sleep(1.5)
-    raise RuntimeError(
-        f"Netlify deploy timed out (last state={last.get('state')!r})"
-    )
+    raise RuntimeError(f"Netlify deploy timed out (last state={last.get('state')!r})")
 
 
 def publish_review_site(

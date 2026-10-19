@@ -14,7 +14,9 @@ from .relevance import find_mentions, name_similarity, relevance_needles
 
 LINK_LAST_RE = re.compile(r'<([^>]+)>;\s*rel="last"', re.I)
 PAGE_RE = re.compile(r"[?&]page=(\d+)")
-INITIAL_MSG_RE = re.compile(r"^(initial commit|first commit|create repo|created repository)\b", re.I)
+INITIAL_MSG_RE = re.compile(
+    r"^(initial commit|first commit|create repo|created repository)\b", re.I
+)
 
 
 def parse_ts(ts: str) -> datetime:
@@ -110,7 +112,7 @@ class GitHubClient:
                     reset = int(resp.headers.get("X-RateLimit-Reset", "0"))
                     wait = max(reset - int(time.time()) + 2, 1)
                 else:
-                    wait = min(60, 2 ** attempt)
+                    wait = min(60, 2**attempt)
                 print(
                     f"  GitHub throttled ({resp.status_code}), sleeping {wait}s",
                     flush=True,
@@ -133,13 +135,9 @@ class GitHubClient:
         if sha:
             params["sha"] = sha
         if until is not None:
-            params["until"] = until.astimezone(UTC).strftime(
-                "%Y-%m-%dT%H:%M:%SZ"
-            )
+            params["until"] = until.astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
         if since is not None:
-            params["since"] = since.astimezone(UTC).strftime(
-                "%Y-%m-%dT%H:%M:%SZ"
-            )
+            params["since"] = since.astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
         resp = self._get(f"/repos/{repo}/commits", params)
         if resp.status_code != 200:
             return None
@@ -165,13 +163,9 @@ class GitHubClient:
         while page <= max_pages:
             params: dict = {"per_page": 100, "page": page}
             if until is not None:
-                params["until"] = until.astimezone(UTC).strftime(
-                    "%Y-%m-%dT%H:%M:%SZ"
-                )
+                params["until"] = until.astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
             if since is not None:
-                params["since"] = since.astimezone(UTC).strftime(
-                    "%Y-%m-%dT%H:%M:%SZ"
-                )
+                params["since"] = since.astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
             resp = self._get(f"/repos/{repo}/commits", params)
             if resp.status_code != 200:
                 break
@@ -281,9 +275,7 @@ class GitHubClient:
             pre_n = self.count_commits(
                 repo, sha=out.default_branch or None, until=self.config.start
             )
-            post_n = self.count_commits(
-                repo, sha=out.default_branch or None, since=self.config.end
-            )
+            post_n = self.count_commits(repo, sha=out.default_branch or None, since=self.config.end)
             time.sleep(GITHUB_DELAY_S)
             if pre_n is None or post_n is None:
                 out.window_stats_incomplete = True
@@ -291,14 +283,10 @@ class GitHubClient:
                 pre_full = self.list_commits(repo, until=self.config.start, max_pages=5)
                 post_full = self.list_commits(repo, since=self.config.end, max_pages=5)
                 out.pre_start_commits = sum(
-                    1
-                    for c in pre_full
-                    if (d := _primary_date(c)) and d < self.config.start
+                    1 for c in pre_full if (d := _primary_date(c)) and d < self.config.start
                 )
                 out.post_end_commits = sum(
-                    1
-                    for c in post_full
-                    if (d := _primary_date(c)) and d > self.config.end
+                    1 for c in post_full if (d := _primary_date(c)) and d > self.config.end
                 )
                 if len(pre_full) >= 500 or len(post_full) >= 500:
                     out.window_stats_incomplete = True
@@ -333,9 +321,7 @@ class GitHubClient:
 
         if team_emails:
             team = {e.lower() for e in team_emails}
-            out.email_overlap = sum(
-                1 for e in out.author_emails if _email_matches_team(e, team)
-            )
+            out.email_overlap = sum(1 for e in out.author_emails if _email_matches_team(e, team))
 
         # README once per repo — used later for project/hackathon name hits.
         out.readme_excerpt = self._readme_text(repo)
@@ -469,9 +455,7 @@ class GitHubClient:
                 title_hits = find_mentions(name, proj_needles)
                 hack_hits = find_mentions(name, hack_needles)
                 if sim >= 0.85 or (
-                    title_hits
-                    and len(max(title_hits, key=len)) >= 5
-                    and (in_window or sim >= 0.6)
+                    title_hits and len(max(title_hits, key=len)) >= 5 and (in_window or sim >= 0.6)
                 ):
                     seen.add(full.lower())
                     name_hits.append(full)
@@ -491,9 +475,7 @@ class GitHubClient:
             return [hack_fallback[0]]
         return []
 
-    def discover_many(
-        self, projects: list[Project], *, workers: int = 8
-    ) -> int:
+    def discover_many(self, projects: list[Project], *, workers: int = 8) -> int:
         """Attach discovered repos onto projects. Returns # new repo links."""
         need = [p for p in projects if p.github_users or p.github_repos]
         if not need:
@@ -559,9 +541,7 @@ class GitHubClient:
             try:
                 return repo, local.analyze(repo, team_emails=team_emails)
             except Exception as exc:
-                return repo, RepoAnalysis(
-                    repo=repo, status=f"error: {exc}", unavailable=True
-                )
+                return repo, RepoAnalysis(repo=repo, status=f"error: {exc}", unavailable=True)
 
         out: dict[str, RepoAnalysis] = {}
         with Progress(

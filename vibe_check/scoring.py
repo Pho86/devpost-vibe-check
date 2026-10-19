@@ -70,9 +70,7 @@ def _score_single_repo(
         if noncode:
             low_score = 8 + (threshold - total) * 2  # much softer
             flags.append("LOW_COMMITS_NONCODE")
-            reasons.append(
-                f"only {total} commit(s), but looks hardware/Figma/no-code — soft flag"
-            )
+            reasons.append(f"only {total} commit(s), but looks hardware/Figma/no-code — soft flag")
         else:
             low_score = 20 + (threshold - total) * 5
             flags.append("LOW_COMMITS")
@@ -184,18 +182,12 @@ def _score_single_repo(
         )
 
     # Author emails vs Devpost team — only when check-in CSV was provided.
-    if (
-        config.email_overlap_enabled
-        and project.team_emails
-        and analysis.author_emails
-    ):
+    if config.email_overlap_enabled and project.team_emails and analysis.author_emails:
         from .github_client import _email_matches_team
 
         team = {e.lower() for e in project.team_emails}
         comparable = [
-            e
-            for e in analysis.author_emails
-            if e and "users.noreply.github.com" not in e
+            e for e in analysis.author_emails if e and "users.noreply.github.com" not in e
         ]
         overlap = sum(1 for e in analysis.author_emails if _email_matches_team(e, team))
         analysis.email_overlap = overlap
@@ -209,9 +201,7 @@ def _score_single_repo(
             reasons.append("no Git author email matches Devpost team emails")
         else:
             flags.append("AUTHOR_EMAILS_HIDDEN")
-            reasons.append(
-                "authors use GitHub noreply emails — overlap check skipped"
-            )
+            reasons.append("authors use GitHub noreply emails — overlap check skipped")
 
     # Project / hackathon name in repo name, recent commits, or README.
     # Never use this to excuse pre-start / outside-window work.
@@ -242,9 +232,7 @@ def _score_single_repo(
             # Soften only when the repo looks in-window / not prebuilt.
             score = max(0, score - (18 if in_commits else 10))
         else:
-            reasons.append(
-                "relevance softener skipped — repo has pre-start / outside-window work"
-            )
+            reasons.append("relevance softener skipped — repo has pre-start / outside-window work")
     elif (total or 0) > 0 and (
         analysis.created_before_start
         or analysis.pre_start_commits > 0
@@ -253,9 +241,7 @@ def _score_single_repo(
         # Old / mismatched repo with no project or hackathon string anywhere.
         score += 14
         flags.append("NO_PROJECT_RELEVANCE")
-        reasons.append(
-            "no project/hackathon name in repo name, recent commits, or README"
-        )
+        reasons.append("no project/hackathon name in repo name, recent commits, or README")
 
     # Hard rule: any pre-start commit activity → always marked for priority review.
     if PRE_START_REVIEW_FLAGS.intersection(flags):
@@ -303,9 +289,7 @@ def score_project(
     detail_bits: list[str] = []
 
     for analysis in analyses:
-        s, flags, reasons = _score_single_repo(
-            project, analysis, config, noncode=noncode
-        )
+        s, flags, reasons = _score_single_repo(project, analysis, config, noncode=noncode)
         detail_bits.append(
             f"{analysis.repo}:score={s}:commits={analysis.total_commits}:"
             f"flags={','.join(flags) or '-'}"

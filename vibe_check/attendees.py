@@ -125,9 +125,7 @@ def _pick_columns(
     status_column: str | None = None,
     checkin_column: str | None = None,
 ) -> tuple[list[str], str | None, str | None]:
-    email_cols = [
-        c for c in fieldnames if c and any(h in c.lower() for h in EMAIL_HEADER_HINTS)
-    ]
+    email_cols = [c for c in fieldnames if c and any(h in c.lower() for h in EMAIL_HEADER_HINTS)]
     status_col = None
     if status_column:
         for c in fieldnames:
@@ -206,9 +204,7 @@ def load_attendee_csv(
 
     if presence_means_accepted is None:
         # Registrants lists / email-only dumps: listed ⇒ accepted.
-        presence_means_accepted = detected in {"registrants", "generic"} and (
-            status_col is None
-        )
+        presence_means_accepted = detected in {"registrants", "generic"} and (status_col is None)
 
     for _, row in df.iterrows():
         emails: list[str] = []

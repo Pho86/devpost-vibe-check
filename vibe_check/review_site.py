@@ -72,11 +72,7 @@ def write_review_site(
 
     marked_rows = [_row_public(r) for r in _ranked(marked)]
     safe_rows = [_row_public(r) for r in _ranked(likely_safe)]
-    no_github_src = [
-        r
-        for r in (*marked, *likely_safe)
-        if "NO_GITHUB" in (r.flags or [])
-    ]
+    no_github_src = [r for r in (*marked, *likely_safe) if "NO_GITHUB" in (r.flags or [])]
     no_github_rows = [_row_public(r) for r in _ranked(no_github_src)]
     # Keep the Likely safe tab for repos we could score; missing GitHub has its own tab.
     safe_rows = [r for r in safe_rows if "NO_GITHUB" not in (r.get("flags") or [])]
@@ -102,9 +98,7 @@ def write_review_site(
     # Prevent breaking out of the script tag.
     data_json = data_json.replace("</", "<\\/")
 
-    title = html.escape(
-        f"Vibe check | {meta.get('hackathon_url') or 'hackathon'}"
-    )
+    title = html.escape(f"Vibe check | {meta.get('hackathon_url') or 'hackathon'}")
     # Visual tokens aligned with SFU Surge hacker-portal (globals.css brand/neutral).
     doc = f"""<!DOCTYPE html>
 <html lang="en">

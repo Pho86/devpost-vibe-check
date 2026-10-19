@@ -34,9 +34,7 @@ class HttpClient:
         last_err: Exception | None = None
         for attempt in range(1, tries + 1):
             try:
-                return self.session.get(
-                    url, headers=headers, params=params, timeout=timeout
-                )
+                return self.session.get(url, headers=headers, params=params, timeout=timeout)
             except RequestException as exc:
                 last_err = exc
                 wait = min(2**attempt, 45)

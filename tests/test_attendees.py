@@ -46,9 +46,7 @@ def test_load_portal_with_checkin(tmp_csv):
 def test_registrants_presence_means_accepted(tmp_csv):
     path = tmp_csv(
         "reg.csv",
-        "Email,Submitted Project?\n"
-        "eve@school.edu,Yes\n"
-        "frank@school.edu,No\n",
+        "Email,Submitted Project?\neve@school.edu,Yes\nfrank@school.edu,No\n",
     )
     idx = load_attendee_csv(path, source_label="reg", preset="registrants")
     assert idx["eve@school.edu"].accepted is True

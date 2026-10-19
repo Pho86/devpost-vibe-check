@@ -157,9 +157,7 @@ def _load_attendees(config: RunConfig, projects: list) -> None:
         return
     indexes = []
     if config.luma_csv:
-        indexes.append(
-            load_attendee_csv(config.luma_csv, source_label="luma", preset="luma")
-        )
+        indexes.append(load_attendee_csv(config.luma_csv, source_label="luma", preset="luma"))
     if config.portal_csv:
         indexes.append(
             load_attendee_csv(
@@ -205,8 +203,7 @@ def _load_attendees(config: RunConfig, projects: list) -> None:
     n_acc = sum(1 for a in merged.values() if a.accepted)
     n_ci = sum(1 for a in merged.values() if a.checked_in)
     print(
-        f"Loaded attendee index: {len(merged)} emails "
-        f"({n_acc} accepted, {n_ci} checked in)",
+        f"Loaded attendee index: {len(merged)} emails ({n_acc} accepted, {n_ci} checked in)",
         flush=True,
     )
 
@@ -290,10 +287,14 @@ def run_pipeline(config: RunConfig, *, use_gallery: bool = False) -> int:
         prior_start = str(prior_meta.get("start") or "")
         prior_end = str(prior_meta.get("end") or "")
         prior_min = prior_meta.get("min_score")
-        mismatch = prior_start and prior_end and (
-            prior_start != config.start.isoformat()
-            or prior_end != config.end.isoformat()
-            or (prior_min is not None and int(prior_min) != int(config.min_score))
+        mismatch = (
+            prior_start
+            and prior_end
+            and (
+                prior_start != config.start.isoformat()
+                or prior_end != config.end.isoformat()
+                or (prior_min is not None and int(prior_min) != int(config.min_score))
+            )
         )
         if mismatch:
             print(
@@ -316,8 +317,7 @@ def run_pipeline(config: RunConfig, *, use_gallery: bool = False) -> int:
         need_scrape = [
             p
             for p in pending
-            if (p.url or "").startswith("http")
-            or (p.slug and p.slug.lower() != "untitled")
+            if (p.url or "").startswith("http") or (p.slug and p.slug.lower() != "untitled")
         ]
         print(
             f"[2/5] Scraping {len(need_scrape)} Devpost project pages "
@@ -407,9 +407,7 @@ def run_pipeline(config: RunConfig, *, use_gallery: bool = False) -> int:
         )
         _checkpoint(config, results)
 
-    marked, likely_safe, combined = bucket_results(
-        results, min_score=config.min_score
-    )
+    marked, likely_safe, combined = bucket_results(results, min_score=config.min_score)
 
     summary = {
         "projects_loaded": len(projects),
@@ -485,9 +483,7 @@ def run_pipeline(config: RunConfig, *, use_gallery: bool = False) -> int:
                 f"  (also wrote {review_dir / 'share.txt'})"
             )
             print(
-                f"\nPublished review site\n"
-                f"  url  : {published.url}\n"
-                f"  code : {published.code}",
+                f"\nPublished review site\n  url  : {published.url}\n  code : {published.code}",
                 flush=True,
             )
         except Exception as exc:

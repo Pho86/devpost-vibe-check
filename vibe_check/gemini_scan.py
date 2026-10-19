@@ -41,19 +41,19 @@ def _prompt_for(result: VibeResult, config: RunConfig) -> str:
 Hackathon: {config.hackathon_url}
 
 Project: {result.project_title}
-Devpost: {result.project_url or '-'}
-Primary repo: {github_repo_url(result.primary_repo) or '-'}
-All repos: {' | '.join(github_repo_url(r) for r in result.repos) or '-'}
+Devpost: {result.project_url or "-"}
+Primary repo: {github_repo_url(result.primary_repo) or "-"}
+All repos: {" | ".join(github_repo_url(r) for r in result.repos) or "-"}
 
 Heuristic score: {result.suspicion_score}
-Flags: {', '.join(result.flags) or '-'}
-Reasons: {' | '.join(result.reasons) or '-'}
+Flags: {", ".join(result.flags) or "-"}
+Reasons: {" | ".join(result.reasons) or "-"}
 Commits: total={result.total_commits} in_window={result.in_window_commits} pre_start={result.pre_start_commits} post_end={result.post_end_commits}
-Repo created_at: {result.created_at or '-'} (before_start={result.created_before_start})
-First meaningful commit: {result.first_meaningful_commit_at or '-'}
-Sample commit messages: {result.sample_messages or '-'}
-Relevance hits: {', '.join(result.relevance_hits) or '-'} ({', '.join(result.relevance_sources) or 'none'})
-Repo details: {result.repo_details or '-'}
+Repo created_at: {result.created_at or "-"} (before_start={result.created_before_start})
+First meaningful commit: {result.first_meaningful_commit_at or "-"}
+Sample commit messages: {result.sample_messages or "-"}
+Relevance hits: {", ".join(result.relevance_hits) or "-"} ({", ".join(result.relevance_sources) or "none"})
+Repo details: {result.repo_details or "-"}
 
 Return JSON with:
 - verdict: one of "suspicious", "likely_ok", "unclear"
@@ -70,7 +70,9 @@ class GeminiScanner:
         api_key: str | None = None,
         model: str = DEFAULT_GEMINI_MODEL,
     ) -> None:
-        self.api_key = (api_key or os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY") or "").strip()
+        self.api_key = (
+            api_key or os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY") or ""
+        ).strip()
         self.model = model or DEFAULT_GEMINI_MODEL
         self._client = None
 
@@ -149,10 +151,7 @@ class GeminiScanner:
             if "GEMINI_OK" not in result.flags:
                 result.flags.append("GEMINI_OK")
             # Informational only — never undo PRE_START_REVIEW / hard heuristics.
-            if (
-                "PRE_START_REVIEW" not in result.flags
-                and "PRE_START_COMMITS" not in result.flags
-            ):
+            if "PRE_START_REVIEW" not in result.flags and "PRE_START_COMMITS" not in result.flags:
                 result.reasons.append(f"Gemini likely_ok ({conf}): {result.gemini_summary}")
 
         return result
