@@ -1,10 +1,9 @@
 from __future__ import annotations
 
+import csv
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
-
-import pandas as pd
 
 from .models import Project
 
@@ -192,54 +191,57 @@ def load_attendee_csv(
     label = source_label or path.name
     out: dict[str, AttendeeInfo] = {}
 
-    df = pd.read_csv(path, dtype=str, keep_default_na=False, encoding="utf-8-sig")
-    if df.empty or df.columns.empty:
-        return out
+    with path.open(encoding="utf-8-sig", newline="") as f:
+        reader = csv.DictReader(f)
+        fields = [str(c) for c in (reader.fieldnames or []) if c is not None]
+        if not fields:
+            return out
 
-    fields = [str(c) for c in df.columns.tolist()]
-    detected = _detect_preset(fields) if preset == "auto" else preset
-    email_cols, status_col, check_col = _pick_columns(
-        fields, status_column=status_column, checkin_column=checkin_column
-    )
+        detected = _detect_preset(fields) if preset == "auto" else preset
+        email_cols, status_col, check_col = _pick_columns(
+            fields, status_column=status_column, checkin_column=checkin_column
+        )
 
-    if presence_means_accepted is None:
-        # Registrants lists / email-only dumps: listed ⇒ accepted.
-        presence_means_accepted = detected in {"registrants", "generic"} and (status_col is None)
+        if presence_means_accepted is None:
+            # Registrants lists / email-only dumps: listed ⇒ accepted.
+            presence_means_accepted = detected in {"registrants", "generic"} and (
+                status_col is None
+            )
 
-    for _, row in df.iterrows():
-        emails: list[str] = []
-        for col in email_cols:
-            e = _norm_email(row.get(col))
-            if e and e not in emails:
-                emails.append(e)
-        if not emails:
-            continue
+        for row in reader:
+            emails: list[str] = []
+            for col in email_cols:
+                e = _norm_email(row.get(col))
+                if e and e not in emails:
+                    emails.append(e)
+            if not emails:
+                continue
 
-        raw_status = row.get(status_col) if status_col else ""
-        accepted_vote = _status_means_accepted(raw_status) if status_col else None
-        if accepted_vote is None and presence_means_accepted:
-            accepted_vote = True
+            raw_status = row.get(status_col) if status_col else ""
+            accepted_vote = _status_means_accepted(raw_status) if status_col else None
+            if accepted_vote is None and presence_means_accepted:
+                accepted_vote = True
 
-        checked = _is_truthy_checkin(row.get(check_col)) if check_col else False
+            checked = _is_truthy_checkin(row.get(check_col)) if check_col else False
 
-        for e in emails:
-            info = out.get(e) or AttendeeInfo(email=e)
-            if accepted_vote is True:
-                info.accepted = True
-            if check_col:
-                info.checkin_tracked = True
-                if checked:
-                    info.checked_in = True
-            if raw_status and str(raw_status).strip():
-                st = str(raw_status).strip()
-                if st not in info.statuses:
-                    info.statuses.append(st)
-            if label not in info.sources:
-                info.sources.append(label)
-            if accepted_vote is False and not info.accepted:
-                if "not_accepted" not in info.statuses:
-                    info.statuses.append("not_accepted")
-            out[e] = info
+            for e in emails:
+                info = out.get(e) or AttendeeInfo(email=e)
+                if accepted_vote is True:
+                    info.accepted = True
+                if check_col:
+                    info.checkin_tracked = True
+                    if checked:
+                        info.checked_in = True
+                if raw_status and str(raw_status).strip():
+                    st = str(raw_status).strip()
+                    if st not in info.statuses:
+                        info.statuses.append(st)
+                if label not in info.sources:
+                    info.sources.append(label)
+                if accepted_vote is False and not info.accepted:
+                    if "not_accepted" not in info.statuses:
+                        info.statuses.append("not_accepted")
+                out[e] = info
 
     print(
         f"[attendees] {label} ({detected}): {len(out)} emails "

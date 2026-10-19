@@ -82,7 +82,7 @@ class GeminiScanner:
         try:
             from google import genai  # noqa: F401
         except ImportError:
-            return False, "google-genai not installed (pip install google-genai)"
+            return False, 'google-genai not installed (pip install -e ".[gemini]")'
         return True, "ok"
 
     def _client_or_raise(self):

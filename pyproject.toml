@@ -1,8 +1,35 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
 [project]
 name = "devpost-vibe-check"
 version = "0.1.0"
-requires-python = ">=3.11"
 description = "Rank Devpost submissions by suspicious git history"
+requires-python = ">=3.11"
+readme = "README.md"
+dependencies = [
+    "requests>=2.31.0",
+    "beautifulsoup4>=4.12.0",
+    "python-dotenv>=1.0.0",
+    "rich>=13.7.0",
+    "tzdata>=2024.1",
+]
+
+[project.optional-dependencies]
+gemini = ["google-genai>=1.0.0"]
+dev = [
+    "pytest==9.1.1",
+    "ruff==0.16.10",
+    "pre-commit==4.7.0",
+]
+
+[project.scripts]
+devpost-vibe-check = "vibe_check.cli:main"
+vibe-check = "vibe_check.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["vibe_check*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
