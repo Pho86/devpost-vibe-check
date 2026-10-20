@@ -2,12 +2,18 @@
 
 from __future__ import annotations
 
+import csv
 import html
 import json
+import re
 from datetime import UTC, datetime
+from io import StringIO
 from pathlib import Path
+from urllib.parse import urlparse
 
 from .models import VibeResult, github_repo_url
+
+_YEAR_SUFFIX = re.compile(r"^([a-z]+)(\d{2,4})$", re.I)
 
 # Short organizer hints. Same idea as the README: look, do not auto-DQ.
 FLAG_HINTS: dict[str, str] = {
@@ -26,6 +32,21 @@ FLAG_HINTS: dict[str, str] = {
     "NO_GITHUB": "No GitHub linked. May be hardware/Figma or a missing link.",
     "LIKELY_NONCODE": "Hardware / Figma / no-code signals. Low commits may be fine.",
 }
+
+
+def hackathon_display_name(hackathon_url: str) -> str:
+    """https://stormhacks2026.devpost.com → StormHacks2026"""
+    host = urlparse(hackathon_url or "").hostname or ""
+    sub = (host.split(".")[0] or "").strip()
+    if not sub or sub.lower() in {"www", "devpost", "csv-import"}:
+        return "Hackathon"
+    m = _YEAR_SUFFIX.match(sub)
+    if m:
+        base, year = m.group(1), m.group(2)
+        pretty = re.sub(r"(hack)", r"Hack", base, count=1, flags=re.I)
+        pretty = pretty[0].upper() + pretty[1:]
+        return f"{pretty}{year}"
+    return sub[0].upper() + sub[1:] if sub else "Hackathon"
 
 
 def _row_public(r: VibeResult) -> dict:
@@ -98,8 +119,17 @@ def write_review_site(
     # Prevent breaking out of the script tag.
     data_json = data_json.replace("</", "<\\/")
 
-    title = html.escape(f"Vibe check | {meta.get('hackathon_url') or 'hackathon'}")
-    # Visual tokens aligned with SFU Surge hacker-portal (globals.css brand/neutral).
+    hack_label = hackathon_display_name(str(meta.get("hackathon_url") or ""))
+    page_heading = f"{hack_label} Devpost Vibe Checker"
+    title = html.escape(page_heading)
+    heading_html = html.escape(page_heading)
+    csv_name = re.sub(r"[^a-zA-Z0-9._-]+", "-", hack_label.lower()).strip("-") or "review"
+    csv_filename = f"{csv_name}-vibe-check.csv"
+
+    # Public CSV beside the HTML (no emails) for static download + Netlify publish.
+    _write_public_csv(path.parent / csv_filename, marked_rows, no_github_rows, safe_rows)
+
+    # Visual tokens: indigo accent + flat neutral dark surface (no gradients).
     doc = f"""<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -122,11 +152,9 @@ def write_review_site(
   --brand: #6466f1;
   --brand-soft: rgba(100, 102, 241, 0.18);
   --brand-strong: #5046e5;
-  --brand-deep: #1d1b4b;
   --caution: #fb923c;
   --caution-soft: rgba(249, 115, 22, 0.16);
   --success: #22c55d;
-  --success-soft: rgba(34, 197, 94, 0.14);
   --font: Inter, ui-sans-serif, system-ui, sans-serif;
   --mono: "DM Mono", ui-monospace, Menlo, Consolas, monospace;
   --radius: 0.5rem;
@@ -138,10 +166,7 @@ body {{
   min-height: 100vh;
   font-family: var(--font);
   color: var(--ink);
-  background:
-    radial-gradient(900px 420px at 8% -8%, rgba(80, 70, 229, 0.22) 0%, transparent 55%),
-    radial-gradient(700px 360px at 100% 0%, rgba(29, 27, 75, 0.55) 0%, transparent 50%),
-    var(--bg);
+  background: var(--bg);
   line-height: 1.45;
   font-feature-settings: "cv01" on, "cv03" on, "cv04" on, "cv11" on;
 }}
@@ -150,25 +175,16 @@ header {{
   max-width: 1100px;
   margin: 0 auto;
 }}
-.eyebrow {{
-  display: inline-flex;
-  align-items: center;
-  gap: 0.4rem;
-  font-size: 0.75rem;
-  font-weight: 600;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  color: var(--brand);
-  margin-bottom: 0.65rem;
-}}
 header h1 {{
   font-size: clamp(1.55rem, 3vw, 2rem);
-  margin: 0 0 0.45rem;
+  margin: 0.35rem 0 0.45rem;
   letter-spacing: -0.02em;
   font-weight: 700;
 }}
 .banner {{
-  display: inline-block;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
   background: var(--caution-soft);
   color: var(--caution);
   border: 1px solid rgba(249, 115, 22, 0.35);
@@ -177,6 +193,11 @@ header h1 {{
   padding: 0.4rem 0.7rem;
   border-radius: var(--radius);
   margin-bottom: 0.85rem;
+}}
+.banner svg {{
+  flex-shrink: 0;
+  width: 1.1rem;
+  height: 1.1rem;
 }}
 .meta, .summary {{
   color: var(--muted);
@@ -225,6 +246,20 @@ header h1 {{
   border-color: var(--brand);
   box-shadow: 0 0 0 2px rgba(100, 102, 241, 0.35);
 }}
+.btn-dl {{
+  border: 1px solid var(--line);
+  background: var(--card);
+  color: var(--ink);
+  padding: 0.5rem 0.85rem;
+  border-radius: var(--radius);
+  font: inherit;
+  font-size: 0.9rem;
+  font-weight: 500;
+  cursor: pointer;
+  text-decoration: none;
+  white-space: nowrap;
+}}
+.btn-dl:hover {{ background: var(--card-hover); border-color: var(--brand); color: #fff; }}
 .seg {{
   display: inline-flex;
   border: 1px solid var(--line);
@@ -320,11 +355,9 @@ main {{
   font-size: 0.82rem;
   color: var(--muted);
   border-left: 3px solid var(--brand);
-  padding-left: 0.65rem;
-  background: linear-gradient(90deg, var(--brand-deep), transparent 85%);
+  padding: 0.35rem 0.65rem;
+  background: var(--bg-elevated);
   border-radius: 0 0.35rem 0.35rem 0;
-  padding-top: 0.35rem;
-  padding-bottom: 0.35rem;
 }}
 .empty {{
   text-align: center;
@@ -345,9 +378,16 @@ footer {{
 </head>
 <body>
 <header>
-  <div class="eyebrow">SFU Surge</div>
-  <div class="banner">Review queue, not an auto-DQ list. Every flag needs a human decision.</div>
-  <h1>Devpost Vibe Check</h1>
+  <div class="banner">
+    <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path d="M12 3.2 2.8 19.5a1 1 0 0 0 .87 1.5h16.66a1 1 0 0 0 .87-1.5L12 3.2Z"
+        stroke="currentColor" stroke-width="1.75" stroke-linejoin="round"/>
+      <path d="M12 9v5.5" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"/>
+      <circle cx="12" cy="17.2" r="1" fill="currentColor"/>
+    </svg>
+    <span>Review queue, not an auto-DQ list. Every flag needs a human decision.</span>
+  </div>
+  <h1>{heading_html}</h1>
   <div class="meta" id="meta"></div>
   <div class="summary" id="summary"></div>
 </header>
@@ -359,15 +399,16 @@ footer {{
     <button type="button" data-bucket="all">All</button>
   </div>
   <input type="search" id="q" placeholder="Filter by project, flag, repo..." autocomplete="off"/>
+  <button type="button" class="btn-dl" id="dlCsv">Download CSV</button>
 </div>
 <main id="list"></main>
 <footer>
-  Generated by Devpost Vibe Check. Team emails are left out of this page;
-  use marked.csv for full fields. Share the link or this file with co-reviewers.
+  Team emails are left out of this page. Share this link with co-reviewers.
 </footer>
 <script id="payload" type="application/json">{data_json}</script>
 <script>
 const DATA = JSON.parse(document.getElementById("payload").textContent);
+const CSV_NAME = {json.dumps(csv_filename)};
 const listEl = document.getElementById("list");
 const qEl = document.getElementById("q");
 let bucket = "marked";
@@ -447,6 +488,35 @@ function matches(row, q) {{
   return blob.includes(q);
 }}
 
+function csvCell(v) {{
+  const s = String(v ?? "");
+  if (/[",\\n\\r]/.test(s)) return '"' + s.replace(/"/g, '""') + '"';
+  return s;
+}}
+
+function downloadCsv() {{
+  const cols = [
+    "suspicion_score","bucket","project_title","project_url","primary_repo",
+    "flags","reasons","total_commits","in_window_commits","pre_start_commits",
+    "post_end_commits"
+  ];
+  const lines = [cols.join(",")];
+  for (const r of allRows()) {{
+    lines.push([
+      r.suspicion_score, r.bucket, r.project_title, r.project_url, r.primary_repo,
+      (r.flags || []).join("|"), (r.reasons || []).join(" | "),
+      r.total_commits, r.in_window_commits, r.pre_start_commits, r.post_end_commits
+    ].map(csvCell).join(","));
+  }}
+  const blob = new Blob([lines.join("\\n")], {{ type: "text/csv;charset=utf-8" }});
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = CSV_NAME;
+  a.click();
+  URL.revokeObjectURL(a.href);
+}}
+document.getElementById("dlCsv").addEventListener("click", downloadCsv);
+
 function render() {{
   const q = qEl.value.trim().toLowerCase();
   const rows = rowsForBucket().filter(r => matches(r, q));
@@ -492,3 +562,58 @@ render();
 """
     path.write_text(doc, encoding="utf-8")
     return path
+
+
+_CSV_COLS = (
+    "suspicion_score",
+    "bucket",
+    "project_title",
+    "project_url",
+    "primary_repo",
+    "flags",
+    "reasons",
+    "total_commits",
+    "in_window_commits",
+    "pre_start_commits",
+    "post_end_commits",
+)
+
+
+def _write_public_csv(
+    path: Path,
+    marked: list[dict],
+    no_github: list[dict],
+    safe: list[dict],
+) -> None:
+    """Write email-free CSV next to index.html for download / publish."""
+    seen: set[str] = set()
+    rows: list[dict] = []
+    for r in (*marked, *no_github, *safe):
+        key = str(r.get("project_url") or r.get("project_title") or "")
+        if key in seen:
+            continue
+        seen.add(key)
+        rows.append(r)
+    rows.sort(
+        key=lambda r: (-int(r.get("suspicion_score") or 0), str(r.get("project_title") or ""))
+    )
+    buf = StringIO()
+    w = csv.DictWriter(buf, fieldnames=list(_CSV_COLS), extrasaction="ignore")
+    w.writeheader()
+    for r in rows:
+        w.writerow(
+            {
+                "suspicion_score": r.get("suspicion_score"),
+                "bucket": r.get("bucket"),
+                "project_title": r.get("project_title"),
+                "project_url": r.get("project_url"),
+                "primary_repo": r.get("primary_repo"),
+                "flags": "|".join(r.get("flags") or []),
+                "reasons": " | ".join(r.get("reasons") or []),
+                "total_commits": r.get("total_commits"),
+                "in_window_commits": r.get("in_window_commits"),
+                "pre_start_commits": r.get("pre_start_commits"),
+                "post_end_commits": r.get("post_end_commits"),
+            }
+        )
+    path.write_text(buf.getvalue(), encoding="utf-8")

@@ -21,6 +21,9 @@ _HEADERS_FILE = """\
 
 /index.html
   Content-Type: text/html; charset=utf-8
+
+/*.csv
+  Content-Type: text/csv; charset=utf-8
 """
 
 

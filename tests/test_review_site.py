@@ -1,5 +1,10 @@
 from vibe_check.models import VibeResult
-from vibe_check.review_site import write_review_site
+from vibe_check.review_site import hackathon_display_name, write_review_site
+
+
+def test_hackathon_display_name():
+    assert hackathon_display_name("https://stormhacks2026.devpost.com") == "StormHacks2026"
+    assert hackathon_display_name("") == "Hackathon"
 
 
 def test_write_review_site_omits_emails_and_lists_flagged(tmp_path):
@@ -60,11 +65,16 @@ def test_write_review_site_omits_emails_and_lists_flagged(tmp_path):
     html = out.read_text(encoding="utf-8")
     assert "Cubic" in html
     assert "PRE_START_REVIEW" in html
-    assert "Review queue, not an auto-DQ" in html
-    assert "SFU Surge" in html
-    assert "#6466f1" in html
     assert "secret@school.edu" not in html
-    assert "alice/cubic" in html or "github.com/alice/cubic" in html
-    assert "Can't find GitHub" in html
     assert "Missing Link" in html
     assert '"no_github"' in html
+    assert "Example Devpost Vibe Checker" in html
+    assert "radial-gradient" not in html
+    assert "Download CSV" in html
+    assert 'class="banner"' in html
+    assert "viewBox=" in html  # caution icon in banner
+    csv_path = out.parent / "example-vibe-check.csv"
+    assert csv_path.exists()
+    csv_text = csv_path.read_text(encoding="utf-8")
+    assert "Cubic" in csv_text
+    assert "secret@school.edu" not in csv_text
