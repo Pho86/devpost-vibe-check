@@ -116,3 +116,38 @@ def test_hackathon_in_repo_name_avoids_no_project_relevance(run_config: RunConfi
     )
     assert "NO_PROJECT_RELEVANCE" not in result.flags
     assert "PROJECT_RELEVANCE" in result.flags
+
+
+def test_devpost_link_beats_profile_discovered_stub(run_config: RunConfig):
+    # KeyNote: Devpost links Kinda-Andrew/KeyNote (healthy); profile scrape also
+    # finds empty 000557A/KeyNote stubs — must score the Devpost link.
+    real = RepoAnalysis(
+        repo="Kinda-Andrew/KeyNote",
+        total_commits=19,
+        in_window_commits=18,
+        post_end_commits=1,
+        name_match_score=1.0,
+        relevance_sources=["repo_name", "commits"],
+        relevance_hits=["keynote"],
+    )
+    stub = RepoAnalysis(
+        repo="000557A/KeyNote",
+        total_commits=1,
+        in_window_commits=0,
+        pre_start_commits=1,
+        all_commits_too_early=True,
+        name_match_score=1.0,
+        relevance_sources=["repo_name"],
+        relevance_hits=["keynote"],
+    )
+    p = _project(
+        title="KeyNote",
+        slug="keynote",
+        github_repos=["Kinda-Andrew/KeyNote", "000557A/KeyNote"],
+        devpost_github_repos=["Kinda-Andrew/KeyNote"],
+    )
+    result = score_project(p, [real, stub], run_config)
+    assert result.primary_repo == "Kinda-Andrew/KeyNote"
+    assert result.suspicion_score < run_config.min_score
+    assert "PRE_START_REVIEW" not in result.flags
+    assert result.total_commits == 19

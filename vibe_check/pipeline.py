@@ -138,17 +138,78 @@ def result_from_dict(r: dict) -> VibeResult:
     )
 
 
+def _checkpoint_meta(config: RunConfig) -> dict:
+    fp = config.resume_fingerprint()
+    return {
+        "hackathon_url": config.hackathon_url,
+        "checkpoint": True,
+        "start": config.start.isoformat(),
+        "end": config.end.isoformat(),
+        "min_score": config.min_score,
+        "low_commit_threshold": config.low_commit_threshold,
+        "early_window_hours": config.early_window_hours,
+        "scrape_devpost": config.scrape_devpost,
+        "scrape_users": config.scrape_users,
+        "preset": config.preset,
+        "fingerprint": fp,
+    }
+
+
+def _fingerprint_mismatch(prior_meta: dict, config: RunConfig) -> list[str]:
+    """Return human-readable mismatch lines; empty if resume is safe."""
+    fp = config.resume_fingerprint()
+    prior_fp = prior_meta.get("fingerprint")
+    if isinstance(prior_fp, dict) and prior_fp:
+        left, right = prior_fp, fp
+    else:
+        # Older checkpoints: compare the fields we used to store flat.
+        left = {
+            "hackathon_url": prior_meta.get("hackathon_url"),
+            "start": prior_meta.get("start"),
+            "end": prior_meta.get("end"),
+            "min_score": prior_meta.get("min_score"),
+            "low_commit_threshold": prior_meta.get("low_commit_threshold"),
+            "early_window_hours": prior_meta.get("early_window_hours"),
+            "scrape_devpost": prior_meta.get("scrape_devpost"),
+            "scrape_users": prior_meta.get("scrape_users"),
+            "preset": prior_meta.get("preset"),
+        }
+        right = fp
+
+    mismatches: list[str] = []
+    for key, want in right.items():
+        got = left.get(key)
+        if got is None and key not in {
+            "hackathon_url",
+            "start",
+            "end",
+            "min_score",
+        }:
+            # Pre-fingerprint checkpoints omit newer keys — only enforce when present.
+            continue
+        if got is None and key in {"hackathon_url", "start", "end", "min_score"}:
+            # Missing core fields: skip that key (empty checkpoint) unless others clash.
+            continue
+        # Normalize bools / ints from JSON.
+        if isinstance(want, bool):
+            got_n = bool(got) if got is not None else None
+        elif isinstance(want, int):
+            try:
+                got_n = int(got) if got is not None else None
+            except (TypeError, ValueError):
+                got_n = got
+        else:
+            got_n = got
+        if got_n is not None and got_n != want:
+            mismatches.append(f"{key}: checkpoint={got_n!r} run={want!r}")
+    return mismatches
+
+
 def _checkpoint(config: RunConfig, results: list[VibeResult]) -> None:
     write_json(
         config.output_dir / "all_results.json",
         results,
-        {
-            "hackathon_url": config.hackathon_url,
-            "checkpoint": True,
-            "start": config.start.isoformat(),
-            "end": config.end.isoformat(),
-            "min_score": config.min_score,
-        },
+        _checkpoint_meta(config),
     )
 
 
@@ -284,25 +345,13 @@ def run_pipeline(config: RunConfig, *, use_gallery: bool = False) -> int:
     if config.resume and all_path.exists():
         prior = json.loads(all_path.read_text(encoding="utf-8"))
         prior_meta = prior.get("meta") or {}
-        prior_start = str(prior_meta.get("start") or "")
-        prior_end = str(prior_meta.get("end") or "")
-        prior_min = prior_meta.get("min_score")
-        mismatch = (
-            prior_start
-            and prior_end
-            and (
-                prior_start != config.start.isoformat()
-                or prior_end != config.end.isoformat()
-                or (prior_min is not None and int(prior_min) != int(config.min_score))
-            )
-        )
-        if mismatch:
+        mismatches = _fingerprint_mismatch(prior_meta, config)
+        if mismatches:
             print(
-                "ERROR: --resume checkpoint window/min_score does not match this run.\n"
-                f"  checkpoint: {prior_start} → {prior_end} (min_score={prior_min})\n"
-                f"  this run : {config.start.isoformat()} → {config.end.isoformat()} "
-                f"(min_score={config.min_score})\n"
-                "  Re-run without --resume, or use the same --start/--end/--min-score.",
+                "ERROR: --resume checkpoint does not match this run.\n"
+                + "".join(f"  • {m}\n" for m in mismatches)
+                + "  Re-run without --resume, or match hackathon URL, window, "
+                "scrape flags, and thresholds.",
                 flush=True,
             )
             return 2
@@ -341,6 +390,11 @@ def run_pipeline(config: RunConfig, *, use_gallery: bool = False) -> int:
         scraper.scrape_team_users(pending, workers=config.workers)
     else:
         print("[3/5] Skipping team profile scrape", flush=True)
+
+    # Snapshot CSV/Devpost links before profile discovery so scoring prefers them.
+    for p in pending:
+        if p.github_repos and not p.devpost_github_repos:
+            p.devpost_github_repos = list(p.github_repos)
 
     print("[4/5] Discovering GitHub repos from team users...", flush=True)
     discovered = github.discover_many(pending, workers=config.workers)
@@ -440,6 +494,7 @@ def run_pipeline(config: RunConfig, *, use_gallery: bool = False) -> int:
         "min_score": config.min_score,
         "scrape_devpost": config.scrape_devpost,
         "scrape_users": config.scrape_users,
+        "fingerprint": config.resume_fingerprint(),
         "gemini": config.gemini,
         "gemini_model": config.gemini_model if config.gemini else None,
         "gemini_all": config.gemini_all,

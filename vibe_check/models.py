@@ -46,6 +46,8 @@ class Project:
     slug: str
     tagline: str = ""
     github_repos: list[str] = field(default_factory=list)
+    # Repos from organizer CSV / Devpost page (not profile discovery). Preferred for scoring.
+    devpost_github_repos: list[str] = field(default_factory=list)
     github_users: list[str] = field(default_factory=list)
     team_profiles: list[str] = field(default_factory=list)  # Devpost usernames
     team_emails: list[str] = field(default_factory=list)

@@ -3,6 +3,7 @@ from __future__ import annotations
 import base64
 import os
 import re
+import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import UTC, datetime, timedelta
@@ -17,6 +18,22 @@ PAGE_RE = re.compile(r"[?&]page=(\d+)")
 INITIAL_MSG_RE = re.compile(
     r"^(initial commit|first commit|create repo|created repository)\b", re.I
 )
+
+# Shared across worker GitHubClient instances so parallel analyze does not burst.
+_GITHUB_GATE = threading.Lock()
+_GITHUB_NEXT_OK = 0.0
+
+
+def _throttle_github() -> None:
+    """Space GitHub API calls globally (all threads / client instances)."""
+    global _GITHUB_NEXT_OK
+    with _GITHUB_GATE:
+        now = time.monotonic()
+        wait = _GITHUB_NEXT_OK - now
+        if wait > 0:
+            time.sleep(wait)
+            now = time.monotonic()
+        _GITHUB_NEXT_OK = now + GITHUB_DELAY_S
 
 
 def parse_ts(ts: str) -> datetime:
@@ -96,6 +113,7 @@ class GitHubClient:
     def _get(self, path: str, params: dict | None = None):
         url = f"https://api.github.com{path}"
         for attempt in range(6):
+            _throttle_github()
             resp = self.client.get(url, headers=self.headers, params=params)
             remaining = resp.headers.get("X-RateLimit-Remaining")
             retry_after = resp.headers.get("Retry-After")
@@ -176,8 +194,48 @@ class GitHubClient:
             if len(batch) < 100:
                 break
             page += 1
-            time.sleep(GITHUB_DELAY_S)
         return commits
+
+    def _list_oldest_commits(
+        self,
+        repo: str,
+        *,
+        sha: str | None = None,
+        max_commits: int = 50,
+    ) -> list[dict]:
+        """
+        Fetch the oldest commits (GitHub returns newest-first; last page is oldest).
+        Used when the recent sample misses early history on large repos.
+        """
+        total = self.count_commits(repo, sha=sha)
+        if not total:
+            return []
+        per_page = 100
+        last_page = max(1, (total + per_page - 1) // per_page)
+        collected: list[dict] = []
+        page = last_page
+        while page >= 1 and len(collected) < max_commits:
+            params: dict = {"per_page": per_page, "page": page}
+            if sha:
+                params["sha"] = sha
+            resp = self._get(f"/repos/{repo}/commits", params)
+            if resp.status_code != 200:
+                break
+            batch = resp.json()
+            if not isinstance(batch, list) or not batch:
+                break
+            # batch is newest→oldest within the page; prepend so collected stays
+            # chronological oldest-first after reverse at the end.
+            collected = batch + collected
+            if page == last_page and len(batch) < per_page:
+                break
+            page -= 1
+        # Oldest first, capped.
+        dated_sorted = sorted(
+            (c for c in collected if _primary_date(c) is not None),
+            key=lambda c: _primary_date(c) or datetime.min.replace(tzinfo=UTC),
+        )
+        return dated_sorted[:max_commits]
 
     def _apply_window_stats(
         self,
@@ -218,8 +276,99 @@ class GitHubClient:
                 seen.add(e)
                 emails.append(e)
         out.author_emails = emails
-        # Keep a wider recent-message window for project/hackathon name matching.
-        out.sample_messages = " | ".join(m for _, m, _ in dated[:15] if m)
+        # Newest messages first — better for project/hackathon name matching.
+        recent = list(reversed(dated[-15:]))
+        out.sample_messages = " | ".join(m for _, m, _ in recent if m)
+
+    def _refine_large_repo_window(
+        self,
+        out: RepoAnalysis,
+        repo: str,
+        *,
+        total: int,
+        sample_dated: list[tuple[datetime, str, str]],
+    ) -> None:
+        """
+        Recent samples miss early history on large repos. Reconcile counts via
+        Link-header filters and pull the oldest page for first-commit signals.
+        """
+        sha = out.default_branch or None
+        pre_n = self.count_commits(repo, sha=sha, until=self.config.start)
+        post_n = self.count_commits(repo, sha=sha, since=self.config.end)
+        early_n = self.count_commits(repo, sha=sha, until=self.config.early_cutoff)
+
+        if pre_n is None or post_n is None:
+            out.window_stats_incomplete = True
+            pre_full = self.list_commits(repo, until=self.config.start, max_pages=5)
+            post_full = self.list_commits(repo, since=self.config.end, max_pages=5)
+            out.pre_start_commits = sum(
+                1 for c in pre_full if (d := _primary_date(c)) and d < self.config.start
+            )
+            out.post_end_commits = sum(
+                1 for c in post_full if (d := _primary_date(c)) and d > self.config.end
+            )
+            if len(pre_full) >= 500 or len(post_full) >= 500:
+                out.window_stats_incomplete = True
+            out.outside_window_commits = out.pre_start_commits + out.post_end_commits
+            if not out.window_stats_incomplete:
+                out.in_window_commits = max(total - out.outside_window_commits, 0)
+            else:
+                out.in_window_commits = max(
+                    0, min(out.in_window_commits, total - out.outside_window_commits)
+                )
+        else:
+            out.pre_start_commits = pre_n
+            out.post_end_commits = post_n
+            out.outside_window_commits = pre_n + post_n
+            out.in_window_commits = max(total - out.outside_window_commits, 0)
+
+        if early_n is not None:
+            out.early_window_commits = early_n
+
+        if out.pre_start_commits >= total:
+            out.all_commits_before_start = True
+            out.all_commits_outside_window = True
+            out.all_commits_too_early = True
+        else:
+            out.all_commits_before_start = False
+            if out.pre_start_commits == 0 and out.post_end_commits == 0:
+                out.all_commits_outside_window = False
+            out.all_commits_too_early = bool(early_n is not None and early_n >= total and total > 0)
+        if out.post_end_commits >= total:
+            out.all_commits_after_end = True
+            out.all_commits_outside_window = True
+        else:
+            out.all_commits_after_end = False
+        if out.outside_window_commits >= total:
+            out.all_commits_outside_window = True
+
+        # Oldest page → true earliest / first meaningful (sample is newest-first).
+        oldest = self._list_oldest_commits(repo, sha=sha, max_commits=50)
+        oldest_dated: list[tuple[datetime, str, str]] = []
+        for c in oldest:
+            d = _primary_date(c)
+            if d is None:
+                continue
+            oldest_dated.append((d, _commit_message(c), _commit_email(c)))
+        if oldest_dated:
+            oldest_dated.sort(key=lambda x: x[0])
+            out.earliest_commit_at = oldest_dated[0][0].isoformat()
+            meaningful = [
+                (d, m, e) for d, m, e in oldest_dated if not INITIAL_MSG_RE.match(m or "")
+            ]
+            if meaningful:
+                out.first_meaningful_commit_at = meaningful[0][0].isoformat()
+            else:
+                out.first_meaningful_commit_at = oldest_dated[0][0].isoformat()
+            # Merge author emails from oldest + recent sample.
+            seen = set(out.author_emails)
+            for _, _, e in oldest_dated:
+                if e and e not in seen:
+                    seen.add(e)
+                    out.author_emails.append(e)
+        elif sample_dated:
+            # Keep sample-derived earliest as a lower bound (may be too recent).
+            out.window_stats_incomplete = True
 
     def analyze(self, repo: str, team_emails: list[str] | None = None) -> RepoAnalysis:
         out = RepoAnalysis(repo=repo)
@@ -246,7 +395,6 @@ class GitHubClient:
 
         total = self.count_commits(repo, sha=out.default_branch or None)
         out.total_commits = total
-        time.sleep(GITHUB_DELAY_S)
 
         max_pages = 1 if (total is not None and total <= 100) else 5
         sample = self.list_commits(repo, max_pages=max_pages)
@@ -271,48 +419,7 @@ class GitHubClient:
         if total is not None and total <= len(dated):
             out.total_commits = len(dated)
         elif total is not None and total > len(dated):
-            # Use Link-header counts (not capped page walks) for pre/post.
-            pre_n = self.count_commits(
-                repo, sha=out.default_branch or None, until=self.config.start
-            )
-            post_n = self.count_commits(repo, sha=out.default_branch or None, since=self.config.end)
-            time.sleep(GITHUB_DELAY_S)
-            if pre_n is None or post_n is None:
-                out.window_stats_incomplete = True
-                # Fall back to capped samples but do not invent full in-window.
-                pre_full = self.list_commits(repo, until=self.config.start, max_pages=5)
-                post_full = self.list_commits(repo, since=self.config.end, max_pages=5)
-                out.pre_start_commits = sum(
-                    1 for c in pre_full if (d := _primary_date(c)) and d < self.config.start
-                )
-                out.post_end_commits = sum(
-                    1 for c in post_full if (d := _primary_date(c)) and d > self.config.end
-                )
-                if len(pre_full) >= 500 or len(post_full) >= 500:
-                    out.window_stats_incomplete = True
-                out.outside_window_commits = out.pre_start_commits + out.post_end_commits
-                # Conservative: only claim in-window when we can bound outside.
-                if not out.window_stats_incomplete:
-                    out.in_window_commits = max(total - out.outside_window_commits, 0)
-                else:
-                    out.in_window_commits = max(
-                        0, min(out.in_window_commits, total - out.outside_window_commits)
-                    )
-            else:
-                out.pre_start_commits = pre_n
-                out.post_end_commits = post_n
-                out.outside_window_commits = pre_n + post_n
-                out.in_window_commits = max(total - out.outside_window_commits, 0)
-
-            if out.pre_start_commits >= total:
-                out.all_commits_before_start = True
-                out.all_commits_outside_window = True
-                out.all_commits_too_early = True
-            if out.post_end_commits >= total:
-                out.all_commits_after_end = True
-                out.all_commits_outside_window = True
-            if out.outside_window_commits >= total:
-                out.all_commits_outside_window = True
+            self._refine_large_repo_window(out, repo, total=total, sample_dated=dated)
 
         # Bulk dump: tiny history + fat tree (GitHub size is KB of git content).
         tc = out.total_commits if out.total_commits is not None else 0
@@ -325,7 +432,6 @@ class GitHubClient:
 
         # README once per repo — used later for project/hackathon name hits.
         out.readme_excerpt = self._readme_text(repo)
-        time.sleep(GITHUB_DELAY_S)
         return out
 
     def _readme_text(self, repo: str) -> str:
@@ -398,7 +504,13 @@ class GitHubClient:
         """
         From GitHub user logins on the project, find repos that look like this
         submission (name match and/or pushed during the hackathon window).
+
+        If Devpost/export already linked a repo, skip profile discovery — teammates
+        often have empty KeyNote stubs that would otherwise outrank the real link.
         """
+        if project.github_repos or project.devpost_github_repos:
+            return []
+
         logins = list(project.github_users)
         # Also treat repo owners as users to scan.
         for repo in project.github_repos:
@@ -432,7 +544,6 @@ class GitHubClient:
                 f"/users/{login}/repos",
                 {"sort": "pushed", "per_page": 50, "type": "all"},
             )
-            time.sleep(GITHUB_DELAY_S)
             if resp.status_code != 200:
                 continue
             repos = resp.json()
@@ -477,7 +588,14 @@ class GitHubClient:
 
     def discover_many(self, projects: list[Project], *, workers: int = 8) -> int:
         """Attach discovered repos onto projects. Returns # new repo links."""
-        need = [p for p in projects if p.github_users or p.github_repos]
+        # Only discover when there is no Devpost/export GitHub link yet.
+        need = [
+            p
+            for p in projects
+            if not p.github_repos
+            and not p.devpost_github_repos
+            and (p.github_users or p.team_profiles)
+        ]
         if not need:
             return 0
         workers = max(1, min(workers, len(need)))

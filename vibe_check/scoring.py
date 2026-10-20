@@ -266,6 +266,17 @@ def _is_submission_repo(analysis: RepoAnalysis, *, only_one: bool) -> bool:
     return False
 
 
+def _repo_key(repo: str) -> str:
+    from .models import normalize_repo_slug
+
+    return normalize_repo_slug(repo).lower()
+
+
+def _devpost_trusted_keys(project: Project) -> set[str]:
+    keys = {_repo_key(r) for r in project.devpost_github_repos if r}
+    return {k for k in keys if k}
+
+
 def score_project(
     project: Project,
     analyses: list[RepoAnalysis],
@@ -278,7 +289,12 @@ def score_project(
         return score_no_repo(project, config, noncode=noncode)
 
     only_one = len(analyses) == 1
-    candidates = [a for a in analyses if _is_submission_repo(a, only_one=only_one)]
+    trusted = _devpost_trusted_keys(project)
+    if trusted:
+        # Prefer organizer/Devpost links over profile-discovered lookalikes.
+        candidates = [a for a in analyses if _repo_key(a.repo) in trusted]
+    else:
+        candidates = [a for a in analyses if _is_submission_repo(a, only_one=only_one)]
     scored_set = candidates or analyses  # fall back if nothing matched by name
 
     best_score = -1
@@ -350,8 +366,9 @@ def score_project(
     ):
         score, flags, reasons = _apply_attendee_flags(project, score, flags, reasons)
 
-    # Aggregate commit stats across repos (sum) for the row
-    totals = [a.total_commits for a in analyses if a.total_commits is not None]
+    # Aggregate commit stats from scored candidates only (not profile junk).
+    agg = list(scored_set)
+    totals = [a.total_commits for a in agg if a.total_commits is not None]
     return VibeResult(
         suspicion_score=score,
         flags=flags,
@@ -364,20 +381,20 @@ def score_project(
         status=best_analysis.status,
         likely_noncode=noncode,
         total_commits=sum(totals) if totals else None,
-        in_window_commits=sum(a.in_window_commits for a in analyses),
-        pre_start_commits=sum(a.pre_start_commits for a in analyses),
-        post_end_commits=sum(a.post_end_commits for a in analyses),
-        outside_window_commits=sum(a.outside_window_commits for a in analyses),
-        early_window_commits=sum(a.early_window_commits for a in analyses),
+        in_window_commits=sum(a.in_window_commits for a in agg),
+        pre_start_commits=sum(a.pre_start_commits for a in agg),
+        post_end_commits=sum(a.post_end_commits for a in agg),
+        outside_window_commits=sum(a.outside_window_commits for a in agg),
+        early_window_commits=sum(a.early_window_commits for a in agg),
         created_at=best_analysis.created_at,
-        created_before_start=any(a.created_before_start for a in analyses),
+        created_before_start=any(a.created_before_start for a in agg),
         first_meaningful_commit_at=best_analysis.first_meaningful_commit_at,
-        is_fork=any(a.is_fork for a in analyses),
+        is_fork=best_analysis.is_fork,
         fork_parent=best_analysis.fork_parent,
-        repo_size_kb=max((a.repo_size_kb for a in analyses), default=0),
-        bulk_dump_suspect=any(a.bulk_dump_suspect for a in analyses),
-        author_emails=sorted({e for a in analyses for e in a.author_emails}),
-        email_overlap=sum(a.email_overlap for a in analyses),
+        repo_size_kb=best_analysis.repo_size_kb,
+        bulk_dump_suspect=best_analysis.bulk_dump_suspect,
+        author_emails=sorted({e for a in agg for e in a.author_emails}),
+        email_overlap=sum(a.email_overlap for a in agg),
         team_emails=list(project.team_emails),
         checked_in_members=project.checked_in_members,
         accepted_members=project.accepted_members,
@@ -385,11 +402,11 @@ def score_project(
         accepted_unmatched_emails=list(project.accepted_unmatched_emails),
         team_size=project.team_size,
         earliest_commit_at=min(
-            (a.earliest_commit_at for a in analyses if a.earliest_commit_at),
+            (a.earliest_commit_at for a in agg if a.earliest_commit_at),
             default="",
         ),
         latest_commit_at=max(
-            (a.latest_commit_at for a in analyses if a.latest_commit_at),
+            (a.latest_commit_at for a in agg if a.latest_commit_at),
             default="",
         ),
         sample_messages=best_analysis.sample_messages,

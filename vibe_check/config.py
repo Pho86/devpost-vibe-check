@@ -150,3 +150,20 @@ class RunConfig:
     def email_overlap_enabled(self) -> bool:
         """Git↔Devpost email overlap when any attendee/check-in CSV is provided."""
         return self.has_attendee_csvs
+
+    def resume_fingerprint(self) -> dict[str, object]:
+        """
+        Fields that must match a checkpoint for --resume to be safe.
+        Changing any of these mid-run would silently merge incompatible scores.
+        """
+        return {
+            "hackathon_url": self.hackathon_url,
+            "start": self.start.isoformat(),
+            "end": self.end.isoformat(),
+            "min_score": int(self.min_score),
+            "low_commit_threshold": int(self.low_commit_threshold),
+            "early_window_hours": int(self.early_window_hours),
+            "scrape_devpost": bool(self.scrape_devpost),
+            "scrape_users": bool(self.scrape_users),
+            "preset": self.preset,
+        }
