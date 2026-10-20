@@ -111,7 +111,8 @@ class RunConfig:
     scrape_users: bool = True
     workers: int = DEFAULT_WORKERS
     checkin_csv: Path | None = None
-    checkin_column: str = "StormHacks 2026 Check In"
+    # None = auto-detect a "check in" column from the CSV headers.
+    checkin_column: str | None = None
     # Extra attendee sources (Luma / portal / Devpost registrants / generic).
     accepted_csvs: tuple[Path, ...] = ()
     luma_csv: Path | None = None

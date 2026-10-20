@@ -261,7 +261,7 @@ Useful columns: `suspicion_score`, `flags`, `reasons`, `primary_repo`, `pre_star
 | `--luma-csv` | off (Luma guest export) |
 | `--registrants-csv` | off (Devpost registrants; listed => accepted) |
 | `--accepted-csv` | off (repeatable; auto-detect format) |
-| `--checkin-column` | portal check-in column name |
+| `--checkin-column` | optional; omit to auto-detect a check-in column |
 | `--gemini` | off (needs `GEMINI_API_KEY` + `pip install -e ".[gemini]"`) |
 | `--gemini-all` | off (scan every project; costlier) |
 | `--gemini-model` | `gemini-2.5-flash` |

@@ -1,5 +1,6 @@
 from vibe_check.attendees import (
     AttendeeInfo,
+    _looks_like_checkin_column,
     attach_attendees,
     load_attendee_csv,
     merge_attendee_indexes,
@@ -24,23 +25,26 @@ def test_load_luma_csv(tmp_csv):
 def test_load_portal_with_checkin(tmp_csv):
     path = tmp_csv(
         "portal.csv",
-        "Email,Current Status,StormHacks 2026 Check In\n"
+        "Email,Current Status,Checked In\n"
         "alice@school.edu,Accepted,yes\n"
         "bob@school.edu,Accepted,\n"
         "dan@school.edu,Rejected,yes\n",
     )
-    idx = load_attendee_csv(
-        path,
-        source_label="portal",
-        preset="portal",
-        checkin_column="StormHacks 2026 Check In",
-    )
+    # No checkin_column → auto-detect "Checked In"
+    idx = load_attendee_csv(path, source_label="portal", preset="portal")
     assert idx["alice@school.edu"].accepted is True
     assert idx["alice@school.edu"].checked_in is True
     assert idx["bob@school.edu"].accepted is True
     assert idx["bob@school.edu"].checked_in is False
     assert idx["bob@school.edu"].checkin_tracked is True
     assert idx["dan@school.edu"].accepted is False
+
+
+def test_checkin_column_detect_skips_checklist():
+    assert _looks_like_checkin_column("Checked In")
+    assert _looks_like_checkin_column("StormHacks 2026 Check In")
+    assert not _looks_like_checkin_column("Checklist finished")
+    assert not _looks_like_checkin_column("Check finished")
 
 
 def test_registrants_presence_means_accepted(tmp_csv):

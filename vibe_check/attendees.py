@@ -155,18 +155,27 @@ def _pick_columns(
                 break
     if check_col is None:
         for c in fieldnames:
-            if not c:
-                continue
-            cl = c.lower()
-            if "check" in cl and "in" in cl:
+            if c and _looks_like_checkin_column(c):
                 check_col = c
                 break
-        if check_col is None:
-            for c in fieldnames:
-                if c and c.lower().strip() in {"checked in", "checked_in", "check-in"}:
-                    check_col = c
-                    break
     return email_cols, status_col, check_col
+
+
+def _looks_like_checkin_column(name: str) -> bool:
+    """Match check-in headers without grabbing 'checklist' / 'check finished'."""
+    cl = (name or "").lower().strip()
+    if not cl or "checklist" in cl:
+        return False
+    if cl in {"checked in", "checked_in", "checked-in", "check-in", "checkin", "check in"}:
+        return True
+    tokens = [t for t in re.split(r"[^a-z0-9]+", cl) if t]
+    if "checkin" in tokens:
+        return True
+    if "checked" in tokens and "in" in tokens:
+        return True
+    if "check" in tokens and "in" in tokens:
+        return True
+    return False
 
 
 def load_attendee_csv(
@@ -319,7 +328,7 @@ def attach_attendees(projects: list[Project], index: dict[str, AttendeeInfo]) ->
 def load_checkin_index(
     path: Path,
     *,
-    checkin_column: str = "StormHacks 2026 Check In",
+    checkin_column: str | None = None,
 ) -> dict[str, bool]:
     """Legacy: email → checked_in bool (portal-style)."""
     idx = load_attendee_csv(

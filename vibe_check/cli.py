@@ -155,8 +155,11 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p.add_argument(
         "--checkin-column",
-        default=os.environ.get("CHECKIN_COLUMN") or "StormHacks 2026 Check In",
-        help="Check-in column name in portal/check-in CSV.",
+        default=os.environ.get("CHECKIN_COLUMN") or None,
+        help=(
+            "Check-in column name in portal/check-in CSV. "
+            "Omit to auto-detect (e.g. 'Checked In', 'check-in')."
+        ),
     )
     p.add_argument(
         "--accepted-csv",

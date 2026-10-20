@@ -16,11 +16,7 @@ def test_fixture_projects_sample_loads():
 
 def test_fixture_attendee_samples_load():
     luma = load_attendee_csv(FIXTURES / "luma-sample.csv", preset="luma")
-    portal = load_attendee_csv(
-        FIXTURES / "portal-sample.csv",
-        preset="portal",
-        checkin_column="StormHacks 2026 Check In",
-    )
+    portal = load_attendee_csv(FIXTURES / "portal-sample.csv", preset="portal")
     assert luma["alice@example.com"].accepted is True
     assert portal["alice@example.com"].checked_in is True
     assert portal["bob@example.com"].checked_in is False
