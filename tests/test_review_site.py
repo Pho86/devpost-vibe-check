@@ -44,16 +44,27 @@ def test_write_review_site_omits_emails_and_lists_flagged(tmp_path):
             primary_repo="",
             bucket="likely_safe",
         ),
+        VibeResult(
+            suspicion_score=30,
+            flags=["REPO_UNAVAILABLE"],
+            reasons=["HTTP 404"],
+            project_title="Private Repo",
+            project_url="https://example.devpost.com/submissions/private",
+            primary_repo="alice/secret",
+            bucket="marked",
+        ),
     ]
     out = write_review_site(
         tmp_path / "review" / "index.html",
         marked=marked,
         likely_safe=safe,
         summary={
-            "projects_loaded": 3,
+            "projects_loaded": 4,
+            # Flagged chip matches main tab (unavailable has its own tab).
             "marked": 1,
-            "likely_safe": 2,
+            "likely_safe": 1,
             "no_github": 1,
+            "unavailable": 1,
         },
         meta={
             "hackathon_url": "https://example.devpost.com",
@@ -68,6 +79,9 @@ def test_write_review_site_omits_emails_and_lists_flagged(tmp_path):
     assert "secret@school.edu" not in html
     assert "Missing Link" in html
     assert '"no_github"' in html
+    assert '"unavailable"' in html
+    assert "Can't access repo" in html
+    assert "Private Repo" in html
     assert "Example Devpost Vibe Checker" in html
     assert "radial-gradient" not in html
     assert "Download CSV" in html

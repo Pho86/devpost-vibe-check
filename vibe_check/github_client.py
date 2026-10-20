@@ -110,11 +110,17 @@ class GitHubClient:
                 flush=True,
             )
 
+    def _repo_reachable(self, repo: str) -> bool:
+        """True when /repos/{repo} looks usable (not 404/private/blocked)."""
+        resp = self._get(f"/repos/{repo}")
+        return resp.status_code == 200
+
     def _get(self, path: str, params: dict | None = None):
         url = f"https://api.github.com{path}"
         for attempt in range(6):
             _throttle_github()
-            resp = self.client.get(url, headers=self.headers, params=params)
+            # tries=1: GitHubClient owns 429/abuse backoff; avoid double-sleep with HttpClient.
+            resp = self.client.get(url, headers=self.headers, params=params, tries=1)
             remaining = resp.headers.get("X-RateLimit-Remaining")
             retry_after = resp.headers.get("Retry-After")
             body = (resp.text or "")[:300].lower()
@@ -505,10 +511,15 @@ class GitHubClient:
         From GitHub user logins on the project, find repos that look like this
         submission (name match and/or pushed during the hackathon window).
 
-        If Devpost/export already linked a repo, skip profile discovery — teammates
-        often have empty KeyNote stubs that would otherwise outrank the real link.
+        If Devpost/export already linked a reachable repo, skip profile discovery —
+        teammates often have empty KeyNote stubs that would otherwise outrank the
+        real link. Dead/private Devpost links still fall through so we can find
+        the real teammate repo.
         """
-        if project.github_repos or project.devpost_github_repos:
+        linked = list(
+            dict.fromkeys([*(project.devpost_github_repos or []), *(project.github_repos or [])])
+        )
+        if linked and any(self._repo_reachable(r) for r in linked):
             return []
 
         logins = list(project.github_users)
@@ -588,14 +599,8 @@ class GitHubClient:
 
     def discover_many(self, projects: list[Project], *, workers: int = 8) -> int:
         """Attach discovered repos onto projects. Returns # new repo links."""
-        # Only discover when there is no Devpost/export GitHub link yet.
-        need = [
-            p
-            for p in projects
-            if not p.github_repos
-            and not p.devpost_github_repos
-            and (p.github_users or p.team_profiles)
-        ]
+        # Discover when there is no reachable Devpost/export link yet (dead links OK).
+        need = [p for p in projects if p.github_users or p.team_profiles]
         if not need:
             return 0
         workers = max(1, min(workers, len(need)))

@@ -463,13 +463,18 @@ def run_pipeline(config: RunConfig, *, use_gallery: bool = False) -> int:
 
     marked, likely_safe, combined = bucket_results(results, min_score=config.min_score)
 
+    def _in_main_tabs(r) -> bool:
+        flags = r.flags or []
+        return "NO_GITHUB" not in flags and "REPO_UNAVAILABLE" not in flags
+
     summary = {
         "projects_loaded": len(projects),
         "scored": sum(1 for r in results if r.primary_repo or (r.repos)),
         "no_github": sum(1 for r in results if "NO_GITHUB" in r.flags),
         "unavailable": sum(1 for r in results if "REPO_UNAVAILABLE" in r.flags),
-        "marked": len(marked),
-        "likely_safe": len(likely_safe),
+        # Match review-site Flagged / Likely safe tabs (can't-verify rows have own tabs).
+        "marked": sum(1 for r in marked if _in_main_tabs(r)),
+        "likely_safe": sum(1 for r in likely_safe if _in_main_tabs(r)),
     }
 
     out = config.output_dir

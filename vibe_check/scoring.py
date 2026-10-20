@@ -55,10 +55,12 @@ def _score_single_repo(
         if analysis.status == "commits fetch failed" or analysis.window_stats_incomplete:
             flags.append("COMMIT_FETCH_INCOMPLETE")
             reasons.append(analysis.status or "commit window stats incomplete")
-            return 18, flags, reasons
+            # Floor into the review queue: can't verify ≠ likely safe.
+            return max(config.min_score, 30), flags, reasons
         flags.append("REPO_UNAVAILABLE")
-        reasons.append(analysis.status or "repo unavailable")
-        return 12, flags, reasons  # mild — needs manual look, not max panic
+        reasons.append(analysis.status or "repo unavailable — ask team for access")
+        # Floor into the review queue: can't verify ≠ likely safe.
+        return max(config.min_score, 30), flags, reasons
 
     if analysis.window_stats_incomplete:
         flags.append("COMMIT_FETCH_INCOMPLETE")
@@ -293,6 +295,15 @@ def score_project(
     if trusted:
         # Prefer organizer/Devpost links over profile-discovered lookalikes.
         candidates = [a for a in analyses if _repo_key(a.repo) in trusted]
+        # Dead/private Devpost link: score discovered submission repos instead.
+        if candidates and all(a.unavailable or a.status not in {"ok", ""} for a in candidates):
+            others = [
+                a
+                for a in analyses
+                if _repo_key(a.repo) not in trusted and _is_submission_repo(a, only_one=False)
+            ]
+            if others:
+                candidates = others
     else:
         candidates = [a for a in analyses if _is_submission_repo(a, only_one=only_one)]
     scored_set = candidates or analyses  # fall back if nothing matched by name

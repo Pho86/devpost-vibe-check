@@ -95,9 +95,16 @@ def write_review_site(
     safe_rows = [_row_public(r) for r in _ranked(likely_safe)]
     no_github_src = [r for r in (*marked, *likely_safe) if "NO_GITHUB" in (r.flags or [])]
     no_github_rows = [_row_public(r) for r in _ranked(no_github_src)]
-    # Keep the Likely safe tab for repos we could score; missing GitHub has its own tab.
-    safe_rows = [r for r in safe_rows if "NO_GITHUB" not in (r.get("flags") or [])]
-    marked_rows = [r for r in marked_rows if "NO_GITHUB" not in (r.get("flags") or [])]
+    unavailable_src = [r for r in (*marked, *likely_safe) if "REPO_UNAVAILABLE" in (r.flags or [])]
+    unavailable_rows = [_row_public(r) for r in _ranked(unavailable_src)]
+
+    # Dedicated tabs for "can't verify" cases — keep Flagged/Safe for scored history.
+    def _keep_main(row: dict) -> bool:
+        flags = row.get("flags") or []
+        return "NO_GITHUB" not in flags and "REPO_UNAVAILABLE" not in flags
+
+    safe_rows = [r for r in safe_rows if _keep_main(r)]
+    marked_rows = [r for r in marked_rows if _keep_main(r)]
     payload = {
         "generated_at": datetime.now(UTC).isoformat(),
         "meta": {
@@ -114,6 +121,7 @@ def write_review_site(
         "marked": marked_rows,
         "likely_safe": safe_rows,
         "no_github": no_github_rows,
+        "unavailable": unavailable_rows,
     }
     data_json = json.dumps(payload, ensure_ascii=False)
     # Prevent breaking out of the script tag.
@@ -127,7 +135,13 @@ def write_review_site(
     csv_filename = f"{csv_name}-vibe-check.csv"
 
     # Public CSV beside the HTML (no emails) for static download + Netlify publish.
-    _write_public_csv(path.parent / csv_filename, marked_rows, no_github_rows, safe_rows)
+    _write_public_csv(
+        path.parent / csv_filename,
+        marked_rows,
+        no_github_rows,
+        unavailable_rows,
+        safe_rows,
+    )
 
     # Visual tokens: indigo accent + flat neutral dark surface (no gradients).
     doc = f"""<!DOCTYPE html>
@@ -395,6 +409,7 @@ footer {{
   <div class="seg" id="bucketSeg">
     <button type="button" data-bucket="marked" class="active">Flagged</button>
     <button type="button" data-bucket="no_github">Can't find GitHub</button>
+    <button type="button" data-bucket="unavailable">Can't access repo</button>
     <button type="button" data-bucket="safe">Likely safe</button>
     <button type="button" data-bucket="all">All</button>
   </div>
@@ -427,6 +442,7 @@ document.getElementById("meta").innerHTML = [
 
 const s = DATA.summary || {{}};
 const noGithubCount = (DATA.no_github || []).length;
+const unavailableCount = (DATA.unavailable || []).length;
 document.getElementById("summary").innerHTML = [
   ["projects_loaded","Loaded"],
   ["marked","Flagged"],
@@ -440,6 +456,12 @@ if (noGithubBtn) {{
   noGithubBtn.textContent = noGithubCount
     ? `Can't find GitHub (${{noGithubCount}})`
     : "Can't find GitHub";
+}}
+const unavailableBtn = document.querySelector('#bucketSeg button[data-bucket="unavailable"]');
+if (unavailableBtn) {{
+  unavailableBtn.textContent = unavailableCount
+    ? `Can't access repo (${{unavailableCount}})`
+    : "Can't access repo";
 }}
 
 document.getElementById("bucketSeg").addEventListener("click", (e) => {{
@@ -459,6 +481,7 @@ function allRows() {{
   for (const r of [
     ...(DATA.marked || []),
     ...(DATA.no_github || []),
+    ...(DATA.unavailable || []),
     ...(DATA.likely_safe || []),
   ]) {{
     const key = r.project_url || r.project_title;
@@ -475,6 +498,7 @@ function allRows() {{
 function rowsForBucket() {{
   if (bucket === "marked") return DATA.marked || [];
   if (bucket === "no_github") return DATA.no_github || [];
+  if (bucket === "unavailable") return DATA.unavailable || [];
   if (bucket === "safe") return DATA.likely_safe || [];
   return allRows();
 }}
@@ -583,12 +607,13 @@ def _write_public_csv(
     path: Path,
     marked: list[dict],
     no_github: list[dict],
+    unavailable: list[dict],
     safe: list[dict],
 ) -> None:
     """Write email-free CSV next to index.html for download / publish."""
     seen: set[str] = set()
     rows: list[dict] = []
-    for r in (*marked, *no_github, *safe):
+    for r in (*marked, *no_github, *unavailable, *safe):
         key = str(r.get("project_url") or r.get("project_title") or "")
         if key in seen:
             continue

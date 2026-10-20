@@ -118,6 +118,63 @@ def test_hackathon_in_repo_name_avoids_no_project_relevance(run_config: RunConfi
     assert "PROJECT_RELEVANCE" in result.flags
 
 
+def test_repo_unavailable_floors_into_review_queue(run_config: RunConfig):
+    analysis = RepoAnalysis(
+        repo="alice/private-app",
+        status="HTTP 404",
+        unavailable=True,
+    )
+    result = score_project(
+        _project(github_repos=["alice/private-app"]),
+        [analysis],
+        run_config,
+    )
+    assert "REPO_UNAVAILABLE" in result.flags
+    assert result.suspicion_score >= run_config.min_score
+
+
+def test_commit_fetch_incomplete_floors_into_review_queue(run_config: RunConfig):
+    analysis = RepoAnalysis(
+        repo="alice/big-app",
+        status="commits fetch failed",
+        unavailable=True,
+        window_stats_incomplete=True,
+    )
+    result = score_project(
+        _project(github_repos=["alice/big-app"]),
+        [analysis],
+        run_config,
+    )
+    assert "COMMIT_FETCH_INCOMPLETE" in result.flags
+    assert result.suspicion_score >= run_config.min_score
+
+
+def test_dead_devpost_link_falls_back_to_discovered_repo(run_config: RunConfig):
+    dead = RepoAnalysis(
+        repo="org/dead-link",
+        status="HTTP 404",
+        unavailable=True,
+    )
+    real = RepoAnalysis(
+        repo="teammate/real-app",
+        total_commits=22,
+        in_window_commits=20,
+        name_match_score=0.9,
+        relevance_sources=["repo_name"],
+        relevance_hits=["real"],
+    )
+    p = _project(
+        title="Real App",
+        slug="real-app",
+        github_repos=["org/dead-link", "teammate/real-app"],
+        devpost_github_repos=["org/dead-link"],
+    )
+    result = score_project(p, [dead, real], run_config)
+    assert result.primary_repo == "teammate/real-app"
+    assert "REPO_UNAVAILABLE" not in result.flags
+    assert result.suspicion_score < run_config.min_score
+
+
 def test_devpost_link_beats_profile_discovered_stub(run_config: RunConfig):
     # KeyNote: Devpost links Kinda-Andrew/KeyNote (healthy); profile scrape also
     # finds empty 000557A/KeyNote stubs — must score the Devpost link.
