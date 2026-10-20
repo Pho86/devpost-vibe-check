@@ -6,7 +6,7 @@ Point it at an organizer projects export (and optionally attendee lists). It fol
 
 Typical signals: very few commits, work before hacking starts, bulk dumps, repos that do not match the project name, and (opt-in) team emails missing from accepted or check-in CSVs. An optional Gemini pass can add a second opinion on flagged rows.
 
-Works with any Devpost hackathon. Built for SFU Surge portal / Luma-style check-in when you have it, and fine as Devpost-only (projects CSV + window, no attendee files).
+Works with any Devpost hackathon. Optional portal / Luma-style check-in when you have it, and fine as Devpost-only (projects CSV + window, no attendee files).
 
 **This tool does not disqualify anyone.** `marked.csv` is a review queue. Every flag needs a human decision. High scores and tags like `PRE_START_REVIEW` mean "look at this first," not "auto-DQ."
 
@@ -32,8 +32,8 @@ Works with any Devpost hackathon. Built for SFU Surge portal / Luma-style check-
 
 ```text
 devpost-vibe-check/
-├── pyproject.toml          # package meta, pytest + ruff config
-├── requirements.txt        # runtime deps
+├── pyproject.toml          # package meta, deps, extras, console scripts
+├── requirements.txt        # core runtime (mirrors pyproject; no pandas/gemini)
 ├── requirements-dev.txt    # pinned pytest, ruff, pre-commit
 ├── .pre-commit-config.yaml # local ruff check + format on commit
 ├── README.md
@@ -87,9 +87,10 @@ Flow: `cli` builds config, `pipeline` loads projects, `scraper` + `github_client
 cd devpost-vibe-check
 python -m venv .venv
 source .venv/Scripts/activate   # or: source .venv/bin/activate
-pip install -r requirements.txt
-# pip install -r requirements-dev.txt    # + pytest, ruff, pre-commit
-# pre-commit install                     # ruff check/format on every commit
+pip install -e .                 # core CLI (also: vibe-check / devpost-vibe-check)
+# pip install -e ".[dev]"        # + pytest, ruff, pre-commit
+# pip install -e ".[gemini]"     # optional --gemini second pass
+# pre-commit install             # ruff check/format on every commit
 cp .env.example .env
 # set GITHUB_TOKEN=...
 # put real exports in data/ (gitignored); try examples/*.csv first
@@ -129,10 +130,10 @@ python -m vibe_check ... --preset strict    # score >= 15
 python -m vibe_check ... --preset loose     # score >= 50
 python -m vibe_check ... --min-score 40     # custom cutoff
 
-# SFU Surge portal (+ optional check-in column)
+# Organizer portal export (+ optional check-in column)
 python -m vibe_check ... \
   --portal-csv path/to/portal-export.csv \
-  --checkin-column "StormHacks 2026 Check In"
+  --checkin-column "Check In"
 
 # Luma / registrants / auto-detect lists (repeatable)
 python -m vibe_check ... --luma-csv path/to/luma-guests.csv
@@ -261,11 +262,11 @@ Useful columns: `suspicion_score`, `flags`, `reasons`, `primary_repo`, `pre_star
 | `--registrants-csv` | off (Devpost registrants; listed => accepted) |
 | `--accepted-csv` | off (repeatable; auto-detect format) |
 | `--checkin-column` | portal check-in column name |
-| `--gemini` | off (needs `GEMINI_API_KEY` + `google-genai`) |
+| `--gemini` | off (needs `GEMINI_API_KEY` + `pip install -e ".[gemini]"`) |
 | `--gemini-all` | off (scan every project; costlier) |
 | `--gemini-model` | `gemini-2.5-flash` |
 | `--publish` | off (upload `review/` to Netlify; `NETLIFY_AUTH_TOKEN` or `VIBE_PUBLISH=1`) |
-| `--resume` | off (refuses if checkpoint window/`min_score` differs) |
+| `--resume` | off (refuses if hackathon URL, window, scrape flags, or thresholds differ) |
 | `--limit` | off (first N projects for smoke tests) |
 
 Gemini: set `GEMINI_API_KEY`, then `--gemini`. By default it reviews flagged rows plus near-misses. `--gemini-all` scans everyone. It never clears `PRE_START_REVIEW`.
@@ -288,7 +289,7 @@ Flags can lie. Treat each one as a prompt to look, not a verdict.
 - **Workers:** `--workers 8` is a solid default. Drop to 2-4 if you get throttled hard.
 - **Gemini:** optional. Free-tier quotas hit 429 easily. Prefer the default (flagged + near-misses) over `--gemini-all`.
 - **Progress:** Devpost scrape, GitHub analyze, and scoring show Rich bars with ETA.
-- **Resume:** if a long run dies, use the same `--start`/`--end`/`--min-score` plus `--resume`.
+- **Resume:** if a long run dies, reuse the same hackathon URL, window, scrape flags, and thresholds with `--resume`.
 - **Install freeze:** `requirements.txt` uses minimum versions. For an event freeze: `pip freeze > requirements.lock` (optional, not checked in).
 
 ## Design notes
