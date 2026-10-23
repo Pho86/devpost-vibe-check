@@ -80,12 +80,13 @@ def test_write_review_site_omits_emails_and_lists_flagged(tmp_path):
     assert "Missing Link" in html
     assert '"no_github"' in html
     assert '"unavailable"' in html
-    assert "Can't access repo" in html
+    assert "Can't access repo" not in html  # renamed to "Unavailable"
+    assert "Unavailable" in html
     assert "Private Repo" in html
     assert "Example Devpost Vibe Checker" in html
     assert "radial-gradient" not in html
-    assert "Download CSV" in html
-    assert 'class="banner"' in html
+    assert "↓ CSV" in html
+    assert 'class="badge-warn"' in html
     assert "viewBox=" in html  # caution icon in banner
     csv_path = out.parent / "example-vibe-check.csv"
     assert csv_path.exists()
